@@ -1,0 +1,382 @@
+/* * 设计哲学 v3.0 (Bento Grid):
+ * 1. 布局模块化：将核心功能拆分成独立的“盒子”，在不同屏幕尺寸下优雅地重新排列。
+ * 2. 信息层级：在PC端，通过盒子的大小和位置，建立清晰的视觉焦点（轮盘）。
+ * 3. 移动端优先：默认是简洁的单栏垂直布局，确保小屏幕下的最佳体验。
+ * 4. 保持优雅：所有“盒子”都遵循我们之前定义的Claude式美学——克制、留白、圆角。
+ */
+body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background-color: #f4f4f5; /* zinc-100 */
+}
+.bento-box {
+    background-color: #ffffff;
+    border: 1px solid #e4e4e7; /* zinc-200 */
+    border-radius: 1rem; /* 16px */
+    padding: 1.5rem; /* 24px */
+    transition: all 0.3s ease-in-out;
+}
+/* 模式切换按钮样式 */
+.mode-btn {
+    background-color: #f4f4f5; /* zinc-100 */
+    border-color: #e4e4e7; /* zinc-200 */
+    color: #71717a; /* zinc-500 */
+}
+.mode-btn.active {
+    background-color: #3b82f6; /* blue-500 */
+    color: white;
+    border-color: #3b82f6;
+}
+.btn-primary {
+    transition: all 0.2s ease-in-out;
+    /* 添加脉冲动画 */
+    animation: none;
+}
+.btn-primary.pulse {
+    animation: pulse 0.4s ease-in-out;
+}
+@keyframes pulse {
+    0% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+    50% { box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4); } /* blue-500 with opacity */
+    100% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.btn-primary:active {
+    transform: translateY(0px) scale(0.98);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* 新增：现代按钮风格 */
+.btn-modern {
+    border-radius: 0.75rem; /* 12px */
+    font-weight: 600; /* semibold */
+    padding: 0.625rem 1.25rem; /* 10px 20px */
+    transition: all 0.2s ease-in-out;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem; /* 8px */
+}
+.btn-modern:hover {
+    transform: translateY(-2px);
+}
+.btn-modern:active {
+    transform: translateY(0) scale(0.98);
+}
+.btn-modern.btn-assign {
+    background-color: #22c55e; /* green-500 */
+    color: white;
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.25);
+}
+.btn-modern.btn-assign:hover {
+    background-color: #16a34a; /* green-600 */
+    box-shadow: 0 6px 16px rgba(34, 197, 94, 0.3);
+}
+.btn-modern.btn-add-player {
+    background-color: #f1f5f9; /* slate-100 */
+    color: #475569; /* slate-600 */
+    border: 1px solid #e2e8f0; /* slate-200 */
+}
+.btn-modern.btn-add-player:hover {
+    background-color: #e2e8f0; /* slate-200 */
+    border-color: #cbd5e1; /* slate-300 */
+}
+
+/* 分享按钮基础样式优化 */
+.btn-modern.btn-share {
+    background-color: #71717a; /* zinc-500 - 更中性的灰色 */
+    color: white;
+    box-shadow: 0 2px 8px rgba(113, 113, 122, 0.2);
+    transition: all 0.2s ease-in-out;
+    border: 1px solid #71717a;
+    min-width: 140px; /* 确保按钮有足够宽度 */
+    font-weight: 500;
+}
+.btn-modern.btn-share:hover {
+    background-color: #52525b; /* zinc-600 */
+    box-shadow: 0 4px 12px rgba(113, 113, 122, 0.3);
+    border-color: #52525b;
+    transform: translateY(-1px);
+}
+.btn-modern.btn-share:disabled {
+    background-color: #e4e4e7; /* zinc-200 */
+    color: #a1a1aa; /* zinc-400 */
+    cursor: not-allowed;
+    box-shadow: none;
+    border-color: #e4e4e7;
+    transform: none;
+}
+.btn-modern.btn-share.loading {
+    position: relative;
+    color: transparent;
+    background-color: #71717a;
+}
+.btn-modern.btn-share.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* 移动端分享按钮优化 */
+@media (max-width: 768px) {
+    .btn-modern.btn-share {
+        width: 100%;
+        max-width: 280px;
+        font-size: 16px;
+        padding: 0.75rem 1.5rem;
+        margin: 0 auto;
+    }
+    
+    /* 控制按钮在移动端的布局优化 */
+    .flex.flex-wrap.gap-4.items-center.mb-6.pb-4.border-b.border-zinc-200 {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    
+    .flex.flex-wrap.gap-4.items-center.mb-6.pb-4.border-b.border-zinc-200 > .btn-modern {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+.weapon-btn {
+    transition: all 0.2s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 添加按下效果 */
+    transform-origin: center;
+}
+.weapon-btn:active {
+    transform: scale(0.98);
+}
+.weapon-btn.active {
+    background-color: #3b82f6; /* blue-500 */
+    color: white;
+    border-color: #3b82f6;
+}
+.weapon-btn.inactive {
+    background-color: #f4f4f5; /* zinc-100 */
+    color: #71717a; /* zinc-500 */
+    border-color: #e4e4e7; /* zinc-200 */
+}
+/* 武器选择器图标动画 */
+.weapon-icon-selector {
+    width: 24px;
+    height: 24px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    margin-right: 8px;
+    transition: transform 0.2s ease-in-out;
+}
+.weapon-btn.active .weapon-icon-selector {
+    transform: scale(1.1);
+}
+.weapon-btn.inactive .weapon-icon-selector {
+    transform: scale(1);
+}
+.pointer {
+    width: 0;
+    height: 0;
+    border-left: 18px solid transparent;
+    border-right: 18px solid transparent;
+    border-top: 28px solid #3b82f6; /* blue-500 */
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
+    /* 添加指针下落动画 */
+    transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+.pointer.drop {
+    transform: translateY(0);
+}
+.result-card {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    visibility: hidden;
+}
+.result-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+}
+/* 结果武器名称强调动画 */
+#resultWeapon {
+    display: inline-block; /* 使 transform 生效 */
+}
+#resultWeapon.pop {
+    animation: popIn 0.3s ease-out;
+}
+@keyframes popIn {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+#challengeContainer {
+    opacity: 0;
+    max-height: 0;
+    transition: opacity 0.4s ease, max-height 0.5s ease, margin-top 0.5s ease, padding-top 0.5s ease;
+    overflow: hidden;
+}
+#challengeContainer.visible {
+    opacity: 1;
+    max-height: 10rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+/* 挑战文字滑入效果 */
+#challengeText.slide-in {
+    animation: slideInLeft 0.5s ease-out;
+}
+@keyframes slideInLeft {
+    from {
+        transform: translateX(-10px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* --- 新版多人模式样式 --- */
+
+.player-card {
+    background-color: #f9fafb; /* zinc-50 */
+    border: 1px solid #e5e7eb; /* zinc-200 */
+    border-radius: 0.75rem; /* 12px */
+    padding: 1rem;
+    transition: all 0.3s ease-in-out;
+    position: relative;
+}
+
+.player-name-input {
+    font-weight: 700; /* bold */
+    color: #1e293b; /* slate-800 */
+    border: 2px solid transparent;
+    border-radius: 0.375rem; /* 6px */
+    padding: 0.25rem 0.5rem;
+    width: 100%;
+    transition: border-color 0.2s ease-in-out;
+}
+
+.player-name-input:hover, .player-name-input:focus {
+    border-color: #cbd5e1; /* slate-300 */
+}
+
+.player-weapon-result {
+    min-height: 80px; /* 为动画和内容保留空间 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0.75rem 0;
+}
+
+.player-weapon-result .weapon-name {
+    font-size: 1.75rem; /* 28px */
+    font-weight: 700;
+    margin-top: 0.5rem;
+}
+
+.player-challenge {
+    font-size: 0.875rem; /* 14px */
+    color: #475569; /* slate-600 */
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.reroll-btn {
+    font-size: 0.75rem; /* 12px */
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    background-color: #e2e8f0; /* slate-200 */
+    color: #475569; /* slate-600 */
+    transition: background-color 0.2s;
+}
+
+.reroll-btn:hover {
+    background-color: #cbd5e1; /* slate-300 */
+}
+
+.reroll-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.remove-player-btn {
+    position: absolute;
+    top: -0.5rem;
+    right: -0.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    background-color: #f1f5f9; /* slate-100 */
+    color: #94a3b8; /* slate-400 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e2e8f0; /* slate-200 */
+    transition: all 0.2s;
+}
+
+.remove-player-btn:hover {
+    background-color: #ef4444; /* red-500 */
+    color: white;
+    transform: scale(1.1);
+}
+
+.team-challenge-card {
+    background-color: #fefce8; /* yellow-50 */
+    border: 1px solid #fde047; /* yellow-300 */
+    border-radius: 0.75rem;
+    padding: 1rem;
+    text-align: center;
+}
+
+.team-challenge-card h4 {
+    font-weight: 700;
+    color: #ca8a04; /* yellow-600 */
+}
+
+/* 分配动画 */
+.slot-machine-effect {
+    overflow: hidden;
+    height: 40px; /* 与图标大小一致 */
+    position: relative;
+}
+
+@keyframes slot-machine-roll {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-100%); }
+}
+
+.slot-machine-reel {
+    display: inline-block;
+    animation: slot-machine-roll 0.1s linear infinite;
+}
+
+/* 加载优化：为武器图标添加基础样式 */
+.weapon-icon {
+    width: 40px;
+    height: 40px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
