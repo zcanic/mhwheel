@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分享按钮逻辑测试</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-100 p-8">
+    <div class="max-w-md mx-auto space-y-4">
+        <h1 class="text-2xl font-bold text-center mb-6">分享按钮显示逻辑测试</h1>
+        
+        <div class="space-y-2">
+            <label class="block text-sm font-medium">玩家数量：</label>
+            <input type="number" id="playerCount" min="1" max="4" value="2" 
+                class="w-full px-3 py-2 border border-zinc-200 rounded-lg">
+        </div>
+        
+        <div class="space-y-2">
+            <label class="block text-sm font-medium">已分配武器的玩家数量：</label>
+            <input type="number" id="assignedCount" min="0" max="4" value="0" 
+                class="w-full px-3 py-2 border border-zinc-200 rounded-lg">
+        </div>
+        
+        <div class="space-y-2">
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" id="isAssigning" 
+                    class="rounded border-zinc-300">
+                <span>正在分配中</span>
+            </label>
+        </div>
+        
+        <button onclick="testLogic()" 
+            class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600">
+            测试显示逻辑
+        </button>
+        
+        <div id="result" class="p-4 rounded-lg border">
+            <h3 class="font-medium mb-2">测试结果：</h3>
+            <div id="resultContent" class="text-sm text-zinc-600">
+                点击测试按钮查看结果
+            </div>
+        </div>
+        
+        <button id="mockShareBtn" class="w-full bg-zinc-500 text-white py-2 px-4 rounded-lg hidden">
+            📸 分享结果
+        </button>
+    </div>
+
+    <script>
+        // 模拟优化后的显示逻辑
+        function testShareButtonLogic(appState) {
+            const validPlayers = appState.multiplayer.players.filter(p => p.name && p.name.trim() !== '');
+            const playersWithWeapons = validPlayers.filter(p => p.weapon);
+            
+            const isAssignmentComplete = !appState.multiplayer.isAssigning;
+            const hasValidPlayers = validPlayers.length > 0;
+            const hasMinimumResults = playersWithWeapons.length >= Math.min(2, validPlayers.length);
+            const allPlayersAssigned = validPlayers.length > 0 && playersWithWeapons.length === validPlayers.length;
+            
+            const shouldShow = isAssignmentComplete && hasValidPlayers && (allPlayersAssigned || hasMinimumResults);
+            
+            return {
+                shouldShow,
+                validPlayers: validPlayers.length,
+                playersWithWeapons: playersWithWeapons.length,
+                isAssignmentComplete,
+                hasValidPlayers,
+                hasMinimumResults,
+                allPlayersAssigned
+            };
+        }
+        
+        function testLogic() {
+            const playerCount = parseInt(document.getElementById('playerCount').value);
+            const assignedCount = parseInt(document.getElementById('assignedCount').value);
+            const isAssigning = document.getElementById('isAssigning').checked;
+            
+            // 创建模拟状态
+            const appState = {
+                multiplayer: {
+                    isAssigning,
+                    players: Array.from({length: playerCount}, (_, i) => ({
+                        name: `玩家${i + 1}`,
+                        weapon: i < assignedCount ? { name: `武器${i + 1}` } : null
+                    }))
+                }
+            };
+            
+            const result = testShareButtonLogic(appState);
+            const shareButton = document.getElementById('mockShareBtn');
+            
+            // 更新按钮显示
+            shareButton.classList.toggle('hidden', !result.shouldShow);
+            
+            // 显示测试结果
+            document.getElementById('resultContent').innerHTML = `
+                <div class="space-y-1">
+                    <div><strong>是否显示分享按钮：</strong> 
+                        <span class="${result.shouldShow ? 'text-green-600' : 'text-red-600'}">
+                            ${result.shouldShow ? '是' : '否'}
+                        </span>
+                    </div>
+                    <div><strong>有效玩家数量：</strong> ${result.validPlayers}</div>
+                    <div><strong>已分配武器玩家数量：</strong> ${result.playersWithWeapons}</div>
+                    <div><strong>分配是否完成：</strong> ${result.isAssignmentComplete ? '是' : '否'}</div>
+                    <div><strong>有有效玩家：</strong> ${result.hasValidPlayers ? '是' : '否'}</div>
+                    <div><strong>达到最少结果数：</strong> ${result.hasMinimumResults ? '是' : '否'}</div>
+                    <div><strong>所有玩家已分配：</strong> ${result.allPlayersAssigned ? '是' : '否'}</div>
+                </div>
+            `;
+        }
+        
+        // 初始测试
+        testLogic();
+        
+        // 监听输入变化
+        document.getElementById('playerCount').addEventListener('input', testLogic);
+        document.getElementById('assignedCount').addEventListener('input', testLogic);
+        document.getElementById('isAssigning').addEventListener('change', testLogic);
+        
+        // 确保分配数量不超过玩家数量
+        document.getElementById('playerCount').addEventListener('input', function() {
+            const assignedInput = document.getElementById('assignedCount');
+            assignedInput.max = this.value;
+            if (parseInt(assignedInput.value) > parseInt(this.value)) {
+                assignedInput.value = this.value;
+                testLogic();
+            }
+        });
+    </script>
+</body>
+</html>

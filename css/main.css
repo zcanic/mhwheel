@@ -227,6 +227,14 @@ body {
     50% { transform: scale(1.1); }
     100% { transform: scale(1); }
 }
+
+/* 减少动画模式支持 */
+@media (prefers-reduced-motion: reduce) {
+    .btn-primary:hover, .btn-modern:hover { transform: none !important; }
+    .btn-primary.pulse, .weapon-btn.active .weapon-icon-selector, #resultWeapon.pop, #challengeText.slide-in,
+    .slot-machine-reel, .btn-modern.btn-share.loading::after { animation: none !important; }
+    .result-card, #challengeContainer { transition: none !important; }
+}
 #challengeContainer {
     opacity: 0;
     max-height: 0;

@@ -1,0 +1,17 @@
+{
+  "name": "mhwheel",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "serve-static": "^1.15.0",
+    "finalhandler": "^1.2.0"
+  }
+}

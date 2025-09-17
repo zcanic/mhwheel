@@ -32,6 +32,50 @@ function getAngleStep(numWeapons) {
     return cachedAngleStep;
 }
 
+// --- 静态层缓存（扇区 + 图标/文字不含高亮）---
+let staticLayer = null;
+let staticLayerWeaponsKey = '';
+
+function buildStaticLayer(activeWeapons){
+    const key = activeWeapons.map(w=>w.name).join('|');
+    if (key === staticLayerWeaponsKey && staticLayer) return;
+    const off = document.createElement('canvas');
+    off.width = 500; off.height = 500; // 与主 canvas 相同
+    const octx = off.getContext('2d');
+    const numWeapons = activeWeapons.length;
+    if(!numWeapons){ staticLayer = off; staticLayerWeaponsKey = key; return; }
+    const angleStep = getAngleStep(numWeapons);
+    octx.translate(CANVAS_CENTER, CANVAS_CENTER);
+    // 扇区
+    activeWeapons.forEach((weapon, i)=>{
+        octx.fillStyle = weapon.color;
+        octx.beginPath();
+        octx.moveTo(0,0);
+        octx.arc(0,0,WHEEL_RADIUS,i*angleStep,(i+1)*angleStep);
+        octx.closePath();
+        octx.fill();
+    });
+    // 图标/文字
+    activeWeapons.forEach((weapon,i)=>{
+        octx.save();
+        octx.rotate(i*angleStep + angleStep/2);
+        const icon = weaponIcons[weapon.name];
+        if (icon){
+            octx.drawImage(icon, ICON_TEXT_OFFSET - ICON_SIZE, -ICON_SIZE/2, ICON_SIZE, ICON_SIZE);
+        } else {
+            octx.fillStyle = 'white';
+            octx.font = 'bold 22px "Noto Sans SC"';
+            octx.textAlign = 'right';
+            octx.textBaseline = 'middle';
+            octx.shadowColor = 'rgba(0,0,0,0.2)';
+            octx.shadowBlur = 4;
+            octx.fillText(weapon.name, ICON_TEXT_OFFSET, 0);
+        }
+        octx.restore();
+    });
+    staticLayer = off; staticLayerWeaponsKey = key;
+}
+
 // --- 状态 Getters/Setters ---
 export function getRotation() { return state.rotation; }
 export function setRotation(newRotation) { state.rotation = newRotation; }
@@ -64,8 +108,6 @@ export function setHighlightTimeout(callback, delay) {
 export function drawWheel(ctx, canvas, activeWeapons) {
     const numWeapons = activeWeapons.length;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 处理没有武器的情况
     if (numWeapons === 0) {
         ctx.fillStyle = '#e4e4e7';
         ctx.beginPath();
@@ -78,56 +120,21 @@ export function drawWheel(ctx, canvas, activeWeapons) {
         ctx.fillText('请至少选择一种武器！', CANVAS_CENTER, CANVAS_CENTER);
         return;
     }
-    
-    const angleStep = getAngleStep(numWeapons);
-    
+    buildStaticLayer(activeWeapons);
+    // 绘制静态层（再旋转）
     ctx.save();
     ctx.translate(CANVAS_CENTER, CANVAS_CENTER);
     ctx.rotate(state.rotation);
-
-    // 1. 绘制扇区背景色
-    activeWeapons.forEach((weapon, i) => {
-        ctx.fillStyle = weapon.color;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, WHEEL_RADIUS, i * angleStep, (i + 1) * angleStep);
-        ctx.closePath();
-        ctx.fill();
-    });
-
-    // 2. 绘制武器图标或文字
-    activeWeapons.forEach((weapon, i) => {
-        ctx.save();
-        ctx.rotate(i * angleStep + angleStep / 2);
-        
-        const icon = weaponIcons[weapon.name];
-        if (icon) { // 图标加载成功
-            ctx.drawImage(icon, ICON_TEXT_OFFSET - ICON_SIZE, -ICON_SIZE / 2, ICON_SIZE, ICON_SIZE);
-        } else { // 图标加载中或失败，回退到绘制文字
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 22px "Noto Sans SC"';
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-            ctx.shadowColor = 'rgba(0,0,0,0.2)';
-            ctx.shadowBlur = 4;
-            ctx.fillText(weapon.name, ICON_TEXT_OFFSET, 0);
-        }
-        ctx.restore();
-    });
-    
-    // 3. 绘制选中扇区高亮效果
-    if (state.highlightedSectorIndex !== undefined && !state.isSpinning) {
+    ctx.drawImage(staticLayer,-CANVAS_CENTER,-CANVAS_CENTER);
+    const angleStep = getAngleStep(numWeapons);
+    if (state.highlightedSectorIndex !== undefined && !state.isSpinning){
         const i = state.highlightedSectorIndex;
-        ctx.save();
-        ctx.rotate(i * angleStep);
-        ctx.fillStyle = activeWeapons[i].color + '80'; // 50% 透明度
+        ctx.fillStyle = activeWeapons[i].color + '80';
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, WHEEL_RADIUS, 0, angleStep);
+        ctx.moveTo(0,0);
+        ctx.arc(0,0,WHEEL_RADIUS,i*angleStep,(i+1)*angleStep);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
     }
-    
     ctx.restore();
 }

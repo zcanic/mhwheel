@@ -4,7 +4,7 @@ import { preloadWeaponIcons } from './utils.js';
 import { drawWheel, getRotation, setRotation, getSpinSpeed, setSpinSpeed, setIsSpinning, setHighlightedSectorIndex, clearHighlightTimeout, setHighlightTimeout } from './wheel.js';
 import { setupSelector, updateWeaponSelectorUI } from './ui.js';
 import { getSynth, getMetalSynth } from './sound.js';
-import { ShareController } from './share.js';
+import { ShareController } from './share/controller.js';
 import { getSettingsManager } from './settings.js';
 
 // --- 合成器实例 ---
@@ -57,7 +57,8 @@ const appState = {
         players: [
             { id: 1, name: '玩家1', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true },
             { id: 2, name: '玩家2', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true },
-        ]
+    ],
+    allowDuplicateWeapons: true
     }
 };
 
@@ -135,7 +136,13 @@ function render() {
     if (appState.mode === 'multi') {
         renderPlayerCards();
         DOMElements.addPlayerBtn.disabled = appState.multiplayer.isAssigning || appState.multiplayer.players.length >= 4;
-        DOMElements.generateMultiButton.disabled = appState.multiplayer.isAssigning || activeWeapons.length < appState.multiplayer.players.length;
+        // 若允许重复，则只需至少有一种武器；否则需要武器数 >= 玩家数
+        const needDisable = appState.multiplayer.isAssigning || (
+            appState.multiplayer.allowDuplicateWeapons
+                ? activeWeapons.length < 1
+                : activeWeapons.length < appState.multiplayer.players.length
+        );
+        DOMElements.generateMultiButton.disabled = needDisable;
         
         const teamChallenge = appState.multiplayer.teamChallenge;
         DOMElements.teamChallengeContainer.classList.toggle('hidden', !teamChallenge);
@@ -233,8 +240,8 @@ function updatePlayerName(id, name) {
 async function startMultiplayerAssignment() {
     const { players } = appState.multiplayer;
     const activeWeapons = weapons.filter(w => appState.activeWeaponNames.includes(w.name));
-    if (activeWeapons.length < players.length) {
-        alert(`武器数量不足！请至少选择 ${players.length} 种武器。`);
+    if (!appState.multiplayer.allowDuplicateWeapons && activeWeapons.length < players.length) {
+        alert(`武器数量不足！请至少选择 ${players.length} 种武器，或开启“允许重复”。`);
         return;
     }
 
@@ -243,14 +250,23 @@ async function startMultiplayerAssignment() {
     resetMultiplayerResults();
     render();
 
-    let availableWeapons = [...activeWeapons];
-    const results = players.map(p => {
-        const weaponIndex = Math.floor(Math.random() * availableWeapons.length);
-        const weapon = availableWeapons[weaponIndex];
-        availableWeapons.splice(weaponIndex, 1);
-        const challenge = challenges[Math.floor(Math.random() * challenges.length)];
-        return { ...p, weapon, challenge };
-    });
+    let results;
+    if (appState.multiplayer.allowDuplicateWeapons) {
+        results = players.map(p => {
+            const weapon = activeWeapons[Math.floor(Math.random() * activeWeapons.length)];
+            const challenge = challenges[Math.floor(Math.random() * challenges.length)];
+            return { ...p, weapon, challenge };
+        });
+    } else {
+        let availableWeapons = [...activeWeapons];
+        results = players.map(p => {
+            const weaponIndex = Math.floor(Math.random() * availableWeapons.length);
+            const weapon = availableWeapons[weaponIndex];
+            availableWeapons.splice(weaponIndex, 1);
+            const challenge = challenges[Math.floor(Math.random() * challenges.length)];
+            return { ...p, weapon, challenge };
+        });
+    }
 
     for (let i = 0; i < results.length; i++) {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -273,27 +289,39 @@ async function startMultiplayerAssignment() {
 function rerollPlayerWeapon(playerId) {
     const player = appState.multiplayer.players.find(p => p.id === playerId);
     if (!player || player.rerollsLeft <= 0) return;
-
-    const otherPlayerWeapons = appState.multiplayer.players
-        .filter(p => p.id !== playerId && p.weapon)
-        .map(p => p.weapon.name);
-    
-    const availableWeapons = weapons.filter(w => 
-        appState.activeWeaponNames.includes(w.name) && !otherPlayerWeapons.includes(w.name)
-    );
-
-    if (availableWeapons.length <= 1 && availableWeapons[0]?.name === player.weapon.name) {
-        alert("没有可供重roll的武器了！");
-        return;
+    let pool;
+    if (appState.multiplayer.allowDuplicateWeapons) {
+        pool = weapons.filter(w => appState.activeWeaponNames.includes(w.name));
+        if (pool.length === 0) return;
+        player.rerollsLeft -= 1;
+        let newWeapon;
+        if (pool.length === 1) {
+            newWeapon = pool[0];
+        } else {
+            do {
+                newWeapon = pool[Math.floor(Math.random() * pool.length)];
+            } while (newWeapon.name === player.weapon.name);
+        }
+        player.weapon = newWeapon;
+    } else {
+        const otherPlayerWeapons = appState.multiplayer.players
+            .filter(p => p.id !== playerId && p.weapon)
+            .map(p => p.weapon.name);
+        const availableWeapons = weapons.filter(w => 
+            appState.activeWeaponNames.includes(w.name) && !otherPlayerWeapons.includes(w.name)
+        );
+        if (availableWeapons.length <= 1 && availableWeapons[0]?.name === player.weapon.name) {
+            alert("没有可供重roll的武器了！");
+            return;
+        }
+        player.rerollsLeft -= 1;
+        let newWeapon;
+        do {
+            newWeapon = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
+        } while (newWeapon.name === player.weapon.name && availableWeapons.length > 1);
+        player.weapon = newWeapon;
     }
 
-    player.rerollsLeft -= 1;
-    let newWeapon;
-    do {
-        newWeapon = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
-    } while (newWeapon.name === player.weapon.name && availableWeapons.length > 1);
-
-    player.weapon = newWeapon;
     player.challenge = challenges[Math.floor(Math.random() * challenges.length)];
     render();
 }
@@ -417,6 +445,14 @@ document.addEventListener('DOMContentLoaded', () => {
     DOMElements.multiSelectAll.addEventListener('click', () => selectAllWeapons(true));
     DOMElements.multiDeselectAll.addEventListener('click', () => selectAllWeapons(false));
     setupSelector(DOMElements.multiWeaponSelector, handleWeaponToggle);
+    // 允许重复开关
+    const allowDupToggle = document.getElementById('allowDuplicateWeapons');
+    if (allowDupToggle) {
+        allowDupToggle.addEventListener('change', (e) => {
+            appState.multiplayer.allowDuplicateWeapons = !!e.target.checked;
+            render();
+        });
+    }
 
     // 多人模式的设置重置功能
     const multiResetBtn = document.getElementById('multiResetSettings');

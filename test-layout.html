@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分享图片测试</title>
+    <style>
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f4f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .test-canvas {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #3b82f6;
+            color: white;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .download-btn {
+            background: #10b981;
+        }
+        .download-btn:hover {
+            background: #059669;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .status.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>分享图片布局测试</h1>
+        <p>测试修复后的分享图片布局，确保无重叠且设计合理</p>
+        
+        <div class="buttons">
+            <button onclick="generateTestImage()">生成测试图片</button>
+            <button onclick="downloadImage()" class="download-btn" id="downloadBtn" disabled>下载图片</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <canvas id="testCanvas" class="test-canvas" width="800" height="800" style="display: none;"></canvas>
+        
+        <div id="previewContainer"></div>
+    </div>
+
+    <script type="module">
+        // 模拟分享配置
+        const SHARE_CONFIG = {
+            CANVAS_SIZE: 800,
+            PADDING: 40,
+            SPACING: {
+                titleToCards: 60,
+                cardGap: 16,
+                cardToTeam: 40,
+                teamToFooter: 60
+            },
+            CARD: {
+                width: 340,
+                height: 200,
+                radius: 12,
+                iconSize: 64,
+                padding: 20
+            },
+            COLORS: {
+                background: '#ffffff',
+                primary: '#18181b',
+                secondary: '#71717a',
+                text: '#09090b',
+                border: '#e4e4e7',
+                accent: '#22c55e',
+                purple: '#a855f7',
+                muted: '#a1a1aa',
+                cardBg: '#f4f4f5',
+                lightBg: '#fafafa'
+            }
+        };
+
+        let currentBlob = null;
+
+        // 模拟测试数据
+        const testData = {
+            players: [
+                { name: '玩家1', weapon: { name: '大剑' }, challenge: '不使用任何道具 (回复药除外)' },
+                { name: '玩家2', weapon: { name: '狩猎笛' }, challenge: '狩猎开始后，先磨地观察怪物1分钟再动手' },
+                { name: '玩家3', weapon: { name: '斩斧' }, challenge: '在怪物的"BGM"最高昂时完成讨伐' },
+                { name: '玩家4', weapon: { name: '重弩' }, challenge: '和地图里的环境生物合影' }
+            ],
+            teamChallenge: '不携带随从猫/犬'
+        };
+
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // 圆角矩形路径
+        function roundRect(ctx, x, y, width, height, radius) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+        }
+
+        // 文本换行
+        function wrapText(ctx, text, maxWidth) {
+            const words = text.split('');
+            const lines = [];
+            let currentLine = '';
+
+            for (let i = 0; i < words.length; i++) {
+                const testLine = currentLine + words[i];
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width > maxWidth && i > 0) {
+                    lines.push(currentLine);
+                    currentLine = words[i];
+                } else {
+                    currentLine = testLine;
+                }
+            }
+            lines.push(currentLine);
+            return lines;
+        }
+
+        // 获取武器颜色
+        function getWeaponColor(weaponName) {
+            const colorMap = {
+                '大剑': '#ef4444',
+                '操虫棍': '#a855f7',
+                '狩猎笛': '#06b6d4',
+                '盾斧': '#8b5cf6',
+                '斩斧': '#7c3aed',
+                '重弩': '#f59e0b'
+            };
+            return colorMap[weaponName] || SHARE_CONFIG.COLORS.primary;
+        }
+
+        function drawPlayerCard(ctx, player, x, y, width, height) {
+            const { CARD, COLORS } = SHARE_CONFIG;
+            
+            // 1. 绘制卡片背景
+            ctx.fillStyle = COLORS.background;
+            roundRect(ctx, x, y, width, height, CARD.radius);
+            ctx.fill();
+            
+            // 2. 绘制卡片边框
+            ctx.strokeStyle = COLORS.border;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // 3. 绘制删除按钮装饰
+            ctx.fillStyle = COLORS.muted;
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('×', x + width - 20, y + 20);
+            
+            // 4. 绘制玩家名称
+            ctx.fillStyle = COLORS.secondary;
+            ctx.font = '16px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(player.name, x + CARD.padding, y + CARD.padding);
+            
+            // 5. 绘制武器图标占位符
+            const iconSize = CARD.iconSize;
+            const iconX = x + (width - iconSize) / 2;
+            const iconY = y + 50;
+            
+            ctx.fillStyle = COLORS.border;
+            ctx.fillRect(iconX, iconY, iconSize, iconSize);
+            ctx.fillStyle = COLORS.secondary;
+            ctx.font = '24px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚔️', iconX + iconSize/2, iconY + iconSize/2);
+            
+            // 6. 绘制武器名称
+            ctx.fillStyle = getWeaponColor(player.weapon.name);
+            ctx.font = 'bold 24px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText(player.weapon.name, x + width/2, iconY + iconSize + 12);
+            
+            // 7. 绘制个人挑战
+            if (player.challenge) {
+                const challengeY = iconY + iconSize + 50;
+                const availableHeight = y + height - challengeY - 30;
+                
+                if (availableHeight > 20) {
+                    ctx.fillStyle = COLORS.muted;
+                    ctx.font = '12px "Noto Sans SC", sans-serif';
+                    ctx.textAlign = 'left';
+                    
+                    const maxWidth = width - (CARD.padding * 2);
+                    const lines = wrapText(ctx, `个人挑战: ${player.challenge}`, maxWidth);
+                    
+                    for (let i = 0; i < Math.min(lines.length, 2); i++) {
+                        ctx.fillText(lines[i], x + CARD.padding, challengeY + i * 16);
+                    }
+                }
+            }
+            
+            // 8. 绘制重roll提示
+            ctx.fillStyle = COLORS.purple;
+            ctx.font = '12px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('重roll (1)', x + width/2, y + height - 10);
+        }
+
+        window.generateTestImage = function() {
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            const { CANVAS_SIZE, PADDING, SPACING, CARD, COLORS } = SHARE_CONFIG;
+            
+            // 清空画布
+            ctx.fillStyle = COLORS.background;
+            ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            
+            let currentY = PADDING;
+            
+            // 1. 绘制标题
+            ctx.fillStyle = COLORS.primary;
+            ctx.font = 'bold 32px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('多人武器分配', CANVAS_SIZE / 2, currentY);
+            currentY += 45;
+            
+            // 2. 绘制玩家卡片网格
+            currentY += SPACING.titleToCards;
+            
+            const cardWidth = CARD.width;
+            const cardHeight = CARD.height;
+            const gap = SPACING.cardGap;
+            const gridWidth = (cardWidth * 2) + gap;
+            const startX = (CANVAS_SIZE - gridWidth) / 2;
+            
+            const players = testData.players.slice(0, 4);
+            let maxY = currentY;
+            
+            for (let i = 0; i < players.length; i++) {
+                const row = Math.floor(i / 2);
+                const col = i % 2;
+                
+                const x = startX + col * (cardWidth + gap);
+                const y = currentY + row * (cardHeight + gap);
+                
+                drawPlayerCard(ctx, players[i], x, y, cardWidth, cardHeight);
+                maxY = Math.max(maxY, y + cardHeight);
+            }
+            
+            currentY = maxY;
+            
+            // 3. 绘制团队挑战
+            currentY += SPACING.cardToTeam;
+            const sectionWidth = CANVAS_SIZE - (PADDING * 2);
+            const sectionHeight = 80;
+            const sectionX = PADDING;
+            
+            ctx.fillStyle = COLORS.cardBg;
+            roundRect(ctx, sectionX, currentY, sectionWidth, sectionHeight, 12);
+            ctx.fill();
+            
+            ctx.strokeStyle = COLORS.border;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            ctx.fillStyle = COLORS.accent;
+            ctx.font = 'bold 20px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('📋 团队挑战', sectionX + 20, currentY + 15);
+            
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '16px "Noto Sans SC", sans-serif';
+            ctx.fillText(testData.teamChallenge, sectionX + 20, currentY + 45);
+            
+            // 4. 绘制页脚
+            const footerY = CANVAS_SIZE - PADDING - 15;
+            ctx.fillStyle = COLORS.muted;
+            ctx.font = '14px "Noto Sans SC", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('Monster Hunter 武器转盘', CANVAS_SIZE / 2, footerY);
+            
+            // 显示预览
+            const previewContainer = document.getElementById('previewContainer');
+            canvas.style.display = 'block';
+            
+            // 生成blob用于下载
+            canvas.toBlob(blob => {
+                currentBlob = blob;
+                document.getElementById('downloadBtn').disabled = false;
+                showStatus('图片生成成功！布局已修复', 'success');
+            }, 'image/png', 0.95);
+        };
+
+        window.downloadImage = function() {
+            if (currentBlob) {
+                const url = URL.createObjectURL(currentBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `测试分享图片-${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showStatus('图片下载成功！', 'success');
+            }
+        };
+        
+        // 自动生成测试图片
+        setTimeout(() => {
+            generateTestImage();
+        }, 500);
+    </script>
+</body>
+</html>

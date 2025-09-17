@@ -1,57 +1,57 @@
-// share.js - 分享功能模块
-// 设计原则：独立模块，不依赖其他业务逻辑，便于维护
+// share.js - 分享功能模块 (Enhanced v2)
+// 设计原则：独立模块 + 可扩展 + 优雅视觉
+// 本次重构：
+// 1. 全新布局：横版 1024x768，自适应玩家数，信息分层清晰
+// 2. 视觉增强：柔和径向渐变 + 轻噪点 + 阴影 + 顶部色条
+// 3. 文本排版：智能换行 + 行数限制 + 省略号
+// 4. 剪贴板优先：生成后直接复制到剪贴板，失败再降级下载
+// 5. 水印：zcanic.xyz/mhwheel
 
 /**
  * 分享配置常量
  */
 const SHARE_CONFIG = {
-    // 画布尺寸 - 正方形，适合社交媒体
-    CANVAS_SIZE: 800,
-    // 内容区域边距 - 合理的边距确保内容不贴边
-    PADDING: 40,
-    // 元素间距 - 精确控制各元素间的距离
-    SPACING: {
-        titleToCards: 60,    // 标题到卡片区域
-        cardGap: 16,        // 卡片之间的间距
-        cardToTeam: 40,     // 卡片到团队挑战区域
-        teamToFooter: 60    // 团队挑战到页脚
-    },
-    // 卡片尺寸配置
-    CARD: {
-        width: 340,         // 卡片宽度
-        height: 200,        // 卡片高度 
-        radius: 12,         // 圆角半径
-        iconSize: 64,       // 武器图标尺寸
-        padding: 20         // 卡片内边距
-    },
+    // 画布尺寸 - 横版，适合多人结果分享
+    CANVAS_WIDTH: 1024,
+    CANVAS_HEIGHT: 768,
+    // 内容区域边距 - 确保信息不贴边
+    PADDING: 56,
+    // 网格间距 - 精确控制各元素间的距离
+    GRID_GAP: 28,
+    // 玩家信息最大行数 - 超出部分省略
+    PLAYER_MAX_LINES: 3,
+    // 团队挑战最大行数 - 超出部分省略
+    TEAM_MAX_LINES: 3,
+    // 水印文本
+    WATERMARK: 'zcanic.xyz/mhwheel',
     // 颜色配置 - 参考附件设计，更加柔和协调
     COLORS: {
         background: '#ffffff',      // 纯白背景
-        primary: '#18181b',         // zinc-900，更深沉的主色
-        secondary: '#71717a',       // zinc-500，中性灰色
-        text: '#09090b',            // zinc-950，深色文字
-        border: '#e4e4e7',         // zinc-200，淡边框
-        accent: '#22c55e',          // green-500，绿色强调（参考"分配武器"按钮）
-        purple: '#a855f7',          // purple-500，紫色强调（参考"分享结果"按钮但降低饱和度）
-        muted: '#a1a1aa',          // zinc-400，次要信息
-        cardBg: '#f4f4f5',         // zinc-100，卡片背景
-        lightBg: '#fafafa'         // zinc-50，浅色背景区域
+        primary: '#0f172a',         // 深色主色
+        secondary: '#475569',       // 中性灰色
+        text: '#0f172a',            // 深色文字
+        divider: '#e2e8f0',         // 淡边框
+        accent: '#3b82f6',          // 蓝色强调
+        teamBg: '#f0f9ff',          // 团队挑战背景
+        teamBorder: '#bae6fd',      // 团队挑战边框
+        teamTitle: '#0369a1',       // 团队挑战标题
+        watermark: '#94a3b8'        // 水印颜色
     },
     // 字体配置
     FONTS: {
-        title: 'bold 32px "Noto Sans SC", sans-serif',
-        subtitle: '24px "Noto Sans SC", sans-serif',
-        playerName: 'bold 20px "Noto Sans SC", sans-serif',
-        weaponName: 'bold 28px "Noto Sans SC", sans-serif',
-        challenge: '16px "Noto Sans SC", sans-serif',
-        footer: '14px "Noto Sans SC", sans-serif'
+        title: '600 40px "Noto Sans SC", sans-serif',
+        playerWeapon: '600 26px "Noto Sans SC", sans-serif',
+        playerName: '500 16px "Noto Sans SC", sans-serif',
+        challenge: '400 14px "Noto Sans SC", sans-serif',
+        teamTitle: '600 20px "Noto Sans SC", sans-serif',
+        footer: '400 12px "Noto Sans SC", sans-serif'
     }
 };
 
 /**
  * 分享图片生成器类
  */
-export class ShareImageGenerator {
+class ShareImageGenerator {
     constructor() {
         this.canvas = null;
         this.ctx = null;
@@ -65,8 +65,8 @@ export class ShareImageGenerator {
     _initCanvas() {
         if (!this.canvas) {
             this.canvas = document.createElement('canvas');
-            this.canvas.width = SHARE_CONFIG.CANVAS_SIZE;
-            this.canvas.height = SHARE_CONFIG.CANVAS_SIZE;
+            this.canvas.width = SHARE_CONFIG.CANVAS_WIDTH;
+            this.canvas.height = SHARE_CONFIG.CANVAS_HEIGHT;
             this.ctx = this.canvas.getContext('2d');
             
             // 启用抗锯齿
@@ -81,8 +81,7 @@ export class ShareImageGenerator {
      * @returns {Promise} 加载完成的Promise
      */
     async preloadWeaponIcons(weapons) {
-        const promises = weapons.map(weapon => this._loadWeaponIcon(weapon));
-        await Promise.allSettled(promises);
+        await Promise.allSettled(weapons.map(w => this._loadWeaponIcon(w)));
     }
 
     /**
@@ -92,26 +91,13 @@ export class ShareImageGenerator {
      * @private
      */
     _loadWeaponIcon(weapon) {
-        return new Promise((resolve) => {
-            if (this.weaponIconCache.has(weapon.name)) {
-                resolve(this.weaponIconCache.get(weapon.name));
-                return;
-            }
-
+        return new Promise(resolve => {
+            if (!weapon || !weapon.icon) return resolve(null);
+            if (this.weaponIconCache.has(weapon.name)) return resolve(this.weaponIconCache.get(weapon.name));
             const img = new Image();
-            img.crossOrigin = 'anonymous'; // 处理跨域问题
-            
-            img.onload = () => {
-                this.weaponIconCache.set(weapon.name, img);
-                resolve(img);
-            };
-            
-            img.onerror = () => {
-                console.warn(`Failed to load weapon icon: ${weapon.name}`);
-                this.weaponIconCache.set(weapon.name, null);
-                resolve(null);
-            };
-            
+            img.crossOrigin = 'anonymous';
+            img.onload = () => { this.weaponIconCache.set(weapon.name, img); resolve(img); };
+            img.onerror = () => { this.weaponIconCache.set(weapon.name, null); resolve(null); };
             img.src = weapon.icon;
         });
     }
@@ -124,205 +110,264 @@ export class ShareImageGenerator {
     async generateMultiplayerShareImage(shareData) {
         this._initCanvas();
         const ctx = this.ctx;
-        const size = SHARE_CONFIG.CANVAS_SIZE;
+        const W = SHARE_CONFIG.CANVAS_WIDTH;
+        const H = SHARE_CONFIG.CANVAS_HEIGHT;
 
-        // 清空画布并设置白色背景
-        ctx.fillStyle = SHARE_CONFIG.COLORS.background;
-        ctx.fillRect(0, 0, size, size);
+        // 背景：径向渐变 + 轻噪点
+        const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, Math.max(W,H)/1.1);
+        grad.addColorStop(0, SHARE_CONFIG.COLORS.bgGradientInner);
+        grad.addColorStop(1, SHARE_CONFIG.COLORS.bgGradientOuter);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,W,H);
+        this._drawNoise(ctx, W, H, 1600);
 
-        // 预加载图标
-        await this.preloadWeaponIcons(shareData.players.map(p => p.weapon).filter(Boolean));
+        // 准备数据
+        const players = shareData.players.slice(0,4); // 最多4人
+        await this.preloadWeaponIcons(players.map(p => p.weapon).filter(Boolean));
 
-        // 精确的布局计算
-        let currentY = SHARE_CONFIG.PADDING;
+        let y = SHARE_CONFIG.PADDING;
+        this._drawTitle(ctx, y); y += 64; // 标题区高度
+        this._drawDivider(ctx, y - 20);
 
-        // 1. 绘制标题
-        currentY = this._drawCenteredTitle(ctx, '多人武器分配', currentY);
-        
-        // 2. 绘制玩家卡片区域（2x2网格）
-        currentY = this._drawPlayerCardsGrid(ctx, shareData.players, currentY + SHARE_CONFIG.SPACING.titleToCards);
-        
-        // 3. 绘制团队挑战（如果有）
+        // 网格区域布局
+        const gridHeightTop = 360; // 预留玩家区高度
+        y = this._drawPlayersGrid(ctx, players, y, gridHeightTop);
+
+        // 团队挑战
         if (shareData.teamChallenge) {
-            currentY = this._drawTeamChallengeSection(ctx, shareData.teamChallenge, currentY + SHARE_CONFIG.SPACING.cardToTeam);
+            y += 24;
+            y = this._drawTeamChallenge(ctx, shareData.teamChallenge, y);
         }
-        
-        // 4. 绘制页脚
-        this._drawCenteredFooter(ctx);
 
-        // 转换为Blob
-        return new Promise((resolve) => {
-            this.canvas.toBlob(resolve, 'image/png', 0.95);
-        });
+        // Footer + 水印
+        this._drawWatermark(ctx);
+
+        return new Promise(resolve => this.canvas.toBlob(b => resolve(b), 'image/png', 0.95));
     }
 
     /**
-     * 绘制居中标题
+     * 绘制噪点背景
      * @param {CanvasRenderingContext2D} ctx 
-     * @param {string} title 
-     * @param {number} y 
-     * @returns {number} 新的Y位置
+     * @param {number} w 
+     * @param {number} h 
+     * @param {number} dots - 噪点数量
      * @private
      */
-    _drawCenteredTitle(ctx, title, y) {
-        ctx.fillStyle = SHARE_CONFIG.COLORS.primary;
-        ctx.font = 'bold 32px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        
-        const centerX = SHARE_CONFIG.CANVAS_SIZE / 2;
-        ctx.fillText(title, centerX, y);
-        
-        return y + 45; // 标题高度
+    _drawNoise(ctx,w,h,dots){
+        ctx.save();
+        ctx.fillStyle = SHARE_CONFIG.COLORS.bgNoise;
+        for(let i=0;i<dots;i++){
+            const x=Math.random()*w; const y=Math.random()*h; const a=Math.random()*0.08; ctx.globalAlpha=a; ctx.fillRect(x,y,1,1);
+        }
+        ctx.restore();
     }
 
     /**
-     * 绘制玩家卡片网格 - 精确的2x2布局
+     * 绘制标题
+     * @param {CanvasRenderingContext2D} ctx 
+     * @param {number} y 
+     * @private
+     */
+    _drawTitle(ctx,y){
+        ctx.fillStyle = SHARE_CONFIG.COLORS.title;
+        ctx.font = SHARE_CONFIG.FONTS.title;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('多人武器分配', SHARE_CONFIG.PADDING, y);
+        ctx.fillStyle = SHARE_CONFIG.COLORS.sub;
+        ctx.font = SHARE_CONFIG.FONTS.challenge;
+        const date = new Date().toLocaleDateString('zh-CN');
+        ctx.fillText(date, SHARE_CONFIG.PADDING, y + 44);
+    }
+
+    /**
+     * 绘制分隔线
+     * @param {CanvasRenderingContext2D} ctx 
+     * @param {number} y 
+     * @private
+     */
+    _drawDivider(ctx,y){
+        ctx.strokeStyle = SHARE_CONFIG.COLORS.divider;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(SHARE_CONFIG.PADDING, y);
+        ctx.lineTo(SHARE_CONFIG.CANVAS_WIDTH - SHARE_CONFIG.PADDING, y);
+        ctx.stroke();
+    }
+
+    /**
+     * 绘制玩家网格
      * @param {CanvasRenderingContext2D} ctx 
      * @param {Array} players 
      * @param {number} startY 
+     * @param {number} gridHeightTop - 网格区域预留高度
      * @returns {number} 新的Y位置
      * @private
      */
-    _drawPlayerCardsGrid(ctx, players, startY) {
-        const playersWithWeapons = players.filter(p => p.weapon);
-        const { CANVAS_SIZE, PADDING, CARD, SPACING } = SHARE_CONFIG;
-        
-        // 计算网格布局
-        const totalWidth = CANVAS_SIZE - (PADDING * 2);
-        const cardWidth = CARD.width;
-        const cardHeight = CARD.height;
-        const gap = SPACING.cardGap;
-        
-        // 居中计算 - 确保2x2网格在画布中心
-        const gridWidth = (cardWidth * 2) + gap;
-        const startX = (CANVAS_SIZE - gridWidth) / 2;
-        
-        // 绘制最多4个玩家卡片
-        const maxPlayers = Math.min(playersWithWeapons.length, 4);
-        let maxY = startY;
-        
-        for (let i = 0; i < maxPlayers; i++) {
-            const player = playersWithWeapons[i];
-            const row = Math.floor(i / 2);
-            const col = i % 2;
-            
-            const x = startX + col * (cardWidth + gap);
-            const y = startY + row * (cardHeight + gap);
-            
-            this._drawPlayerCard(ctx, player, x, y, cardWidth, cardHeight);
-            
-            maxY = Math.max(maxY, y + cardHeight);
+    _drawPlayersGrid(ctx, players, startY, gridHeightTop){
+        const count = players.length;
+        if (count === 0) return startY;
+        const areaWidth = SHARE_CONFIG.CANVAS_WIDTH - SHARE_CONFIG.PADDING*2;
+        const colCount = count <= 2 ? 1 : 2;
+        const colWidth = colCount === 1 ? Math.min(600, areaWidth) : (areaWidth - SHARE_CONFIG.GRID_GAP)/2;
+        const cardGapY = 24;
+        let xLeft = SHARE_CONFIG.PADDING + (areaWidth - (colCount === 1 ? colWidth : (colWidth*2 + SHARE_CONFIG.GRID_GAP)))/2;
+        let currentY = startY;
+        let rowHeights = [];
+
+        for (let i=0;i<count;i++){
+            const player = players[i];
+            const col = colCount===1?0:i%2;
+            const row = colCount===1?i:Math.floor(i/2);
+            if(!rowHeights[row]) rowHeights[row]=0;
+            const cardX = colCount===1? xLeft : xLeft + col*(colWidth + SHARE_CONFIG.GRID_GAP);
+            const cardY = startY + rowHeights.slice(0,row).reduce((a,b)=>a+b,0) + (row>0?row*cardGapY:0);
+            const cardHeight = this._drawPlayerCard(ctx, player, cardX, cardY, colWidth);
+            rowHeights[row] = cardHeight;
         }
-        
-        return maxY;
+        const totalHeight = rowHeights.reduce((a,b)=>a+b,0) + cardGapY*(rowHeights.length-1);
+        return startY + totalHeight;
     }
 
     /**
-     * 绘制单个玩家卡片 - 完全重写以匹配附件设计
+     * 绘制单个玩家卡片
      * @param {CanvasRenderingContext2D} ctx 
      * @param {Object} player 
      * @param {number} x 
      * @param {number} y 
      * @param {number} width 
-     * @param {number} height 
      * @private
      */
-    _drawPlayerCard(ctx, player, x, y, width, height) {
-        const { CARD, COLORS } = SHARE_CONFIG;
-        
-        // 1. 绘制卡片背景
-        ctx.fillStyle = COLORS.background;
-        this._roundRect(ctx, x, y, width, height, CARD.radius);
-        ctx.fill();
-        
-        // 2. 绘制卡片边框
-        ctx.strokeStyle = COLORS.border;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        
-        // 3. 绘制删除按钮装饰（右上角）
-        ctx.fillStyle = COLORS.muted;
-        ctx.font = '20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('×', x + width - 20, y + 20);
-        
-        // 4. 绘制玩家名称（左上角）
-        ctx.fillStyle = COLORS.secondary;
-        ctx.font = '16px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(player.name || '玩家', x + CARD.padding, y + CARD.padding);
-        
-        // 5. 绘制武器图标（居中上方）
-        const iconSize = CARD.iconSize;
-        const iconX = x + (width - iconSize) / 2;
-        const iconY = y + 50;
-        
-        const weaponIcon = this.weaponIconCache.get(player.weapon.name);
-        if (weaponIcon) {
-            ctx.drawImage(weaponIcon, iconX, iconY, iconSize, iconSize);
-        } else {
-            // 占位符
-            ctx.fillStyle = COLORS.border;
-            ctx.fillRect(iconX, iconY, iconSize, iconSize);
-            ctx.fillStyle = COLORS.secondary;
-            ctx.font = '24px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('⚔️', iconX + iconSize/2, iconY + iconSize/2);
+    _drawPlayerCard(ctx, player, x, y, width){
+        const padding = 20;
+        const iconSize = 72;
+        const topBarHeight = 4;
+        // 预估挑战文本高度
+        const challengeText = player.challenge ? `挑战：${player.challenge}` : '';
+        const challengeLines = challengeText? this._wrapLines(ctx, challengeText, width - padding*2, SHARE_CONFIG.FONTS.challenge, SHARE_CONFIG.PLAYER_MAX_LINES):[];
+        const baseHeight = 20 + iconSize + 12 + 30 + (challengeLines.length? (challengeLines.length*20 + 12):0) + padding; // 动态高度
+        const height = baseHeight;
+
+        // 阴影 & 卡片
+        this._roundRectPath(ctx, x, y, width, height, 18);
+        ctx.fillStyle = 'rgba(0,0,0,0.04)'; ctx.fill();
+        this._roundRectPath(ctx, x, y, width, height, 16);
+        ctx.fillStyle = SHARE_CONFIG.COLORS.cardBg; ctx.fill();
+        ctx.strokeStyle = SHARE_CONFIG.COLORS.cardBorder; ctx.lineWidth = 1; ctx.stroke();
+        // 顶部色条按武器色或默认
+        const color = (player.weapon && player.weapon.color) || SHARE_CONFIG.COLORS.accent;
+        ctx.fillStyle = color; ctx.fillRect(x, y, width, topBarHeight);
+
+        // 武器图标圆背景
+        const centerX = x + width/2;
+        const iconY = y + 20 + topBarHeight;
+        ctx.beginPath(); ctx.arc(centerX, iconY + iconSize/2, iconSize/2 + 10, 0, Math.PI*2); ctx.fillStyle = '#f1f5f9'; ctx.fill();
+        // 图标
+        if (player.weapon){
+            const img = this.weaponIconCache.get(player.weapon.name);
+            if (img) ctx.drawImage(img, centerX - iconSize/2, iconY, iconSize, iconSize);
+            else { ctx.fillStyle = '#cbd5e1'; ctx.font='32px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⚔️', centerX, iconY + iconSize/2); }
         }
-        
-        // 6. 绘制武器名称（彩色，居中）
-        ctx.fillStyle = this._getWeaponColor(player.weapon.name);
-        ctx.font = 'bold 24px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(player.weapon.name, x + width/2, iconY + iconSize + 12);
-        
-        // 7. 绘制个人挑战（如果有空间）
-        if (player.challenge) {
-            const challengeY = iconY + iconSize + 50;
-            const availableHeight = y + height - challengeY - 30;
-            
-            if (availableHeight > 20) {
-                ctx.fillStyle = COLORS.muted;
-                ctx.font = '12px "Noto Sans SC", sans-serif';
-                ctx.textAlign = 'left';
-                
-                // 文本换行
-                const maxWidth = width - (CARD.padding * 2);
-                const lines = this._wrapText(ctx, `个人挑战: ${player.challenge}`, maxWidth);
-                
-                for (let i = 0; i < Math.min(lines.length, 2); i++) {
-                    ctx.fillText(lines[i], x + CARD.padding, challengeY + i * 16);
-                }
+
+        // 武器名
+        ctx.fillStyle = color; ctx.font = SHARE_CONFIG.FONTS.playerWeapon; ctx.textAlign='center'; ctx.textBaseline='top';
+        ctx.fillText(player.weapon?player.weapon.name:'未知武器', centerX, iconY + iconSize + 12);
+        // 玩家名标签
+        ctx.fillStyle = '#f1f5f9';
+        const nameText = player.name || '玩家';
+        ctx.font = SHARE_CONFIG.FONTS.playerName;
+        const nameWidth = ctx.measureText(nameText).width + 24;
+        const nameX = centerX - nameWidth/2;
+        const nameY = iconY + iconSize + 12 + 34;
+        this._roundRectPath(ctx, nameX, nameY, nameWidth, 30, 16);
+        ctx.fill();
+        ctx.fillStyle = SHARE_CONFIG.COLORS.sub; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(nameText, centerX, nameY + 15);
+
+        // 挑战文本
+        if (challengeLines.length){
+            let cy = nameY + 30 + 12;
+            ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillStyle = SHARE_CONFIG.COLORS.sub; ctx.font = SHARE_CONFIG.FONTS.challenge;
+            for (let line of challengeLines){
+                ctx.fillText(line, x + padding, cy);
+                cy += 20;
             }
         }
-        
-        // 8. 绘制重roll提示（底部居中）
-        ctx.fillStyle = COLORS.purple;
-        ctx.font = '12px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText('重roll (1)', x + width/2, y + height - 10);
+
+        return height + 8; // 返回所占高度（含间距微调）
     }
 
     /**
-     * 获取武器对应的颜色
-     * @param {string} weaponName 
-     * @returns {string}
+     * 绘制团队挑战区域
+     * @param {CanvasRenderingContext2D} ctx 
+     * @param {string} text 
+     * @param {number} y 
      * @private
      */
-    _getWeaponColor(weaponName) {
-        const colorMap = {
-            '大剑': '#ef4444',      // red-500
-            '操虫棍': '#a855f7',    // purple-500  
-            '狩猎笛': '#06b6d4',    // cyan-500
-            '盾斧': '#8b5cf6'       // violet-500
-        };
-        return colorMap[weaponName] || SHARE_CONFIG.COLORS.primary;
+    _drawTeamChallenge(ctx, text, y){
+        const x = SHARE_CONFIG.PADDING;
+        const width = SHARE_CONFIG.CANVAS_WIDTH - SHARE_CONFIG.PADDING*2;
+        const padding = 24;
+        const lines = this._wrapLines(ctx, text, width - padding*2, SHARE_CONFIG.FONTS.challenge, SHARE_CONFIG.TEAM_MAX_LINES);
+        const height = 28 + 16 + lines.length*20 + padding*2;
+        this._roundRectPath(ctx, x, y, width, height, 20);
+        ctx.fillStyle = SHARE_CONFIG.COLORS.teamBg; ctx.fill();
+        ctx.strokeStyle = SHARE_CONFIG.COLORS.teamBorder; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = SHARE_CONFIG.COLORS.teamTitle; ctx.font = SHARE_CONFIG.FONTS.teamTitle; ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.fillText('📋 团队挑战', x + padding, y + padding);
+        ctx.fillStyle = SHARE_CONFIG.COLORS.sub; ctx.font = SHARE_CONFIG.FONTS.challenge;
+        let ty = y + padding + 32;
+        for (let line of lines){ ctx.fillText(line, x + padding, ty); ty += 20; }
+        return y + height;
+    }
+
+    /**
+     * 绘制水印
+     * @param {CanvasRenderingContext2D} ctx 
+     * @private
+     */
+    _drawWatermark(ctx){
+        ctx.fillStyle = SHARE_CONFIG.COLORS.watermark;
+        ctx.font = SHARE_CONFIG.FONTS.footer;
+        ctx.textAlign='right'; ctx.textBaseline='bottom';
+        ctx.fillText(SHARE_CONFIG.WATERMARK, SHARE_CONFIG.CANVAS_WIDTH - SHARE_CONFIG.PADDING, SHARE_CONFIG.CANVAS_HEIGHT - SHARE_CONFIG.PADDING/2);
+    }
+
+    /**
+     * 智能换行 - 根据最大宽度和行数限制文本
+     * @param {CanvasRenderingContext2D} ctx 
+     * @param {string} text 
+     * @param {number} maxWidth 
+     * @param {string} font 
+     * @param {number} maxLines 
+     * @returns {Array<string>} 换行后的文本数组
+     * @private
+     */
+    _wrapLines(ctx, text, maxWidth, font, maxLines){
+        ctx.font = font;
+        const chars = text.split('');
+        const lines=[]; let current='';
+        for (let c of chars){
+            const test = current + c;
+            if (ctx.measureText(test).width > maxWidth){
+                lines.push(current); current = c;
+                if (maxLines && lines.length === maxLines){ break; }
+            } else current = test;
+        }
+        if (lines.length < maxLines) lines.push(current);
+        if (maxLines && lines.length > maxLines){ lines.length = maxLines; }
+        // 省略号处理
+        if (maxLines && lines.length === maxLines){
+            const last = lines[maxLines-1];
+            if (ctx.measureText(last).width > maxWidth){
+                let trimmed = last;
+                while (trimmed.length && ctx.measureText(trimmed + '…').width > maxWidth){
+                    trimmed = trimmed.slice(0,-1);
+                }
+                lines[maxLines-1] = trimmed + '…';
+            }
+        }
+        return lines.filter(l=>l.trim().length>0);
     }
 
     /**
@@ -335,213 +380,18 @@ export class ShareImageGenerator {
      * @param {number} radius 
      * @private
      */
-    _roundRect(ctx, x, y, width, height, radius) {
+    _roundRectPath(ctx,x,y,w,h,r){
         ctx.beginPath();
-        ctx.moveTo(x + radius, y);
-        ctx.lineTo(x + width - radius, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-        ctx.lineTo(x + width, y + height - radius);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-        ctx.lineTo(x + radius, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-        ctx.lineTo(x, y + radius);
-        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.moveTo(x+r,y);
+        ctx.lineTo(x+w-r,y);
+        ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+        ctx.lineTo(x+w,y+h-r);
+        ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+        ctx.lineTo(x+r,y+h);
+        ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+        ctx.lineTo(x,y+r);
+        ctx.quadraticCurveTo(x,y,x+r,y);
         ctx.closePath();
-    }
-
-    /**
-     * 绘制团队挑战区域 - 参考附件设计
-     * @param {CanvasRenderingContext2D} ctx 
-     * @param {string} teamChallenge 
-     * @param {number} y 
-     * @returns {number} 新的Y位置
-     * @private
-     */
-    _drawTeamChallengeSection(ctx, teamChallenge, y) {
-        const { CANVAS_SIZE, PADDING, COLORS } = SHARE_CONFIG;
-        const sectionWidth = CANVAS_SIZE - (PADDING * 2);
-        const sectionHeight = 80;
-        const x = PADDING;
-        
-        // 绘制团队挑战背景卡片
-        ctx.fillStyle = COLORS.cardBg;
-        this._roundRect(ctx, x, y, sectionWidth, sectionHeight, 12);
-        ctx.fill();
-        
-        // 绘制边框
-        ctx.strokeStyle = COLORS.border;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        
-        // 绘制图标和标题
-        ctx.fillStyle = COLORS.accent;
-        ctx.font = 'bold 20px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText('📋 团队挑战', x + 20, y + 15);
-        
-        // 绘制挑战内容
-        ctx.fillStyle = COLORS.text;
-        ctx.font = '16px "Noto Sans SC", sans-serif';
-        
-        const challengeText = teamChallenge;
-        const maxWidth = sectionWidth - 40;
-        const lines = this._wrapText(ctx, challengeText, maxWidth);
-        
-        let textY = y + 45;
-        for (let i = 0; i < Math.min(lines.length, 2); i++) {
-            ctx.fillText(lines[i], x + 20, textY + i * 20);
-        }
-        
-        return y + sectionHeight;
-    }
-
-    /**
-     * 绘制居中页脚
-     * @param {CanvasRenderingContext2D} ctx 
-     * @private
-     */
-    _drawCenteredFooter(ctx) {
-        const { CANVAS_SIZE, PADDING, COLORS } = SHARE_CONFIG;
-        const y = CANVAS_SIZE - PADDING - 15;
-        
-        ctx.fillStyle = COLORS.muted;
-        ctx.font = '14px "Noto Sans SC", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        
-        const centerX = CANVAS_SIZE / 2;
-        ctx.fillText('Monster Hunter 武器转盘', centerX, y);
-    }
-
-    /**
-     * 绘制玩家信息
-     * @param {CanvasRenderingContext2D} ctx 
-     * @param {Object} player 
-     * @param {number} y 
-     * @returns {number} 新的Y位置
-     * @private
-     */
-    _drawPlayerInfo(ctx, player, y) {
-        const padding = SHARE_CONFIG.PADDING;
-        const iconSize = 40;
-        
-        // 绘制武器图标
-        const weaponIcon = this.weaponIconCache.get(player.weapon.name);
-        if (weaponIcon) {
-            ctx.drawImage(weaponIcon, padding, y, iconSize, iconSize);
-        } else {
-            // 如果图标加载失败，绘制占位符
-            ctx.fillStyle = SHARE_CONFIG.COLORS.border;
-            ctx.fillRect(padding, y, iconSize, iconSize);
-            ctx.fillStyle = SHARE_CONFIG.COLORS.secondary;
-            ctx.font = '20px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('⚔️', padding + iconSize/2, y + iconSize/2);
-        }
-        
-        // 绘制玩家名称
-        ctx.fillStyle = SHARE_CONFIG.COLORS.text;
-        ctx.font = SHARE_CONFIG.FONTS.playerName;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(player.name, padding + iconSize + 15, y);
-        
-        // 绘制武器名称（带颜色）
-        ctx.fillStyle = player.weapon.color || SHARE_CONFIG.COLORS.primary;
-        ctx.font = SHARE_CONFIG.FONTS.weaponName;
-        ctx.fillText(player.weapon.name, padding + iconSize + 15, y + 25);
-        
-        // 绘制挑战
-        if (player.challenge) {
-            ctx.fillStyle = SHARE_CONFIG.COLORS.secondary;
-            ctx.font = SHARE_CONFIG.FONTS.challenge;
-            const challengeText = `挑战: ${player.challenge}`;
-            ctx.fillText(challengeText, padding + iconSize + 15, y + 58);
-        }
-        
-        return y + 90;
-    }
-
-    /**
-     * 绘制团队挑战
-     * @param {CanvasRenderingContext2D} ctx 
-     * @param {string} teamChallenge 
-     * @param {number} y 
-     * @returns {number} 新的Y位置
-     * @private
-     */
-    _drawTeamChallenge(ctx, teamChallenge, y) {
-        const padding = SHARE_CONFIG.PADDING;
-        
-        // 绘制标题
-        ctx.fillStyle = SHARE_CONFIG.COLORS.accent;
-        ctx.font = SHARE_CONFIG.FONTS.subtitle;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText('📋 团队挑战', padding, y);
-        
-        // 绘制挑战内容
-        ctx.fillStyle = SHARE_CONFIG.COLORS.text;
-        ctx.font = SHARE_CONFIG.FONTS.challenge;
-        const challengeText = this._wrapText(ctx, teamChallenge, SHARE_CONFIG.CANVAS_SIZE - padding * 2);
-        
-        let textY = y + 35;
-        for (const line of challengeText) {
-            ctx.fillText(line, padding, textY);
-            textY += 20;
-        }
-        
-        return textY + 20;
-    }
-
-    /**
-     * 绘制页脚
-     * @param {CanvasRenderingContext2D} ctx 
-     * @private
-     */
-    _drawFooter(ctx) {
-        const padding = SHARE_CONFIG.PADDING;
-        const footerY = SHARE_CONFIG.CANVAS_SIZE - padding - 20;
-        
-        ctx.fillStyle = SHARE_CONFIG.COLORS.secondary;
-        ctx.font = SHARE_CONFIG.FONTS.footer;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        
-        const centerX = SHARE_CONFIG.CANVAS_SIZE / 2;
-        const currentDate = new Date().toLocaleDateString('zh-CN');
-        ctx.fillText(`🌐 猎人命运轮盘 - ${currentDate}`, centerX, footerY);
-    }
-
-    /**
-     * 文字换行处理
-     * @param {CanvasRenderingContext2D} ctx 
-     * @param {string} text 
-     * @param {number} maxWidth 
-     * @returns {Array<string>} 换行后的文本数组
-     * @private
-     */
-    _wrapText(ctx, text, maxWidth) {
-        const words = text.split('');
-        const lines = [];
-        let currentLine = '';
-
-        for (let i = 0; i < words.length; i++) {
-            const testLine = currentLine + words[i];
-            const metrics = ctx.measureText(testLine);
-            const testWidth = metrics.width;
-
-            if (testWidth > maxWidth && i > 0) {
-                lines.push(currentLine);
-                currentLine = words[i];
-            } else {
-                currentLine = testLine;
-            }
-        }
-        lines.push(currentLine);
-        return lines;
     }
 }
 
@@ -549,7 +399,7 @@ export class ShareImageGenerator {
  * 分享功能主控制器
  */
 export class ShareController {
-    constructor() {
+    constructor(){
         this.generator = new ShareImageGenerator();
         this.isSharing = false;
         this.shareButton = null;
@@ -560,13 +410,13 @@ export class ShareController {
      * 初始化分享控制器（绑定DOM和事件）
      * @param {Function} getAppState - 获取应用状态的函数
      */
-    init(getAppState) {
+    init(getAppState){
         if (this.initialized) return;
         
         this.getAppState = getAppState;
         this.shareButton = document.getElementById('shareResultsBtn');
         
-        if (this.shareButton) {
+        if (this.shareButton){
             // 绑定方法引用以便后续正确移除
             this._boundHandleShare = () => this.handleShare();
             this.shareButton.addEventListener('click', this._boundHandleShare);
@@ -578,65 +428,23 @@ export class ShareController {
     /**
      * 处理分享按钮点击
      */
-    async handleShare() {
-        if (!this.getAppState) {
-            console.error('ShareController not properly initialized');
-            return;
-        }
-
+    async handleShare(){
+        if (!this.getAppState) return;
         const appState = this.getAppState();
-        const validPlayers = appState.multiplayer.players.filter(p => p.name && p.name.trim() !== '');
-        const playersWithWeapons = appState.multiplayer.players.filter(p => p.weapon);
-        
-        if (validPlayers.length === 0) {
-            this._showMessage('请先添加玩家！', 'error');
-            return;
-        }
-        
-        if (playersWithWeapons.length === 0) {
-            this._showMessage('请先分配武器再分享！', 'error');
-            return;
-        }
-        
-        const shareData = {
-            players: playersWithWeapons,
-            teamChallenge: appState.multiplayer.teamChallenge
-        };
-        
-        await this.share(shareData);
+        const playersWithWeapons = appState.multiplayer.players.filter(p=>p.weapon);
+        if (playersWithWeapons.length === 0){ this._showMessage('请先分配武器再分享','error'); return; }
+        await this.share({ players: playersWithWeapons, teamChallenge: appState.multiplayer.teamChallenge });
     }
 
     /**
      * 更新分享按钮状态 - 简化为一直显示
      * @param {Object} appState - 应用状态
      */
-    updateUI(appState) {
-        if (!this.shareButton || !appState.multiplayer) return;
-        
-        // 简化逻辑：分享按钮一直显示，只是根据状态调整可用性和文本
-        const validPlayers = appState.multiplayer.players.filter(p => p.name && p.name.trim() !== '');
-        const playersWithWeapons = validPlayers.filter(p => p.weapon);
-        const hasResults = playersWithWeapons.length > 0;
-        const isSharing = this.isSharing;
-        const isAssigning = appState.multiplayer.isAssigning;
-        
-        // 按钮始终显示，不再隐藏
-        this.shareButton.classList.remove('hidden');
-        
-        // 根据状态设置可用性
-        this.shareButton.disabled = isSharing || isAssigning || !hasResults;
-        this.shareButton.classList.toggle('loading', isSharing);
-        
-        // 根据状态设置按钮文本
-        if (isSharing) {
-            this.shareButton.textContent = '分享中...';
-        } else if (isAssigning) {
-            this.shareButton.textContent = '📸 分享结果';
-        } else if (!hasResults) {
-            this.shareButton.textContent = '📸 分享结果';
-        } else {
-            this.shareButton.textContent = '📸 分享结果';
-        }
+    updateUI(appState){
+        if (!this.shareButton) return;
+        const hasResults = appState.multiplayer.players.some(p=>p.weapon);
+        this.shareButton.disabled = this.isSharing || !hasResults || appState.multiplayer.isAssigning;
+        this.shareButton.classList.toggle('loading', this.isSharing);
     }
 
     /**
@@ -644,154 +452,61 @@ export class ShareController {
      * @param {Object} shareData - 分享数据
      * @returns {Promise<boolean>} 分享是否成功
      */
-    async share(shareData) {
-        if (this.isSharing) {
-            console.warn('Share operation already in progress');
-            return false;
-        }
-
-        this.isSharing = true;
-        this.updateUI(this.getAppState ? this.getAppState() : {multiplayer: {players: [], isAssigning: false}});
-        
+    async share(shareData){
+        if (this.isSharing) return false;
+        this.isSharing = true; this.updateUI(this.getAppState());
         try {
-            // 生成图片
             const blob = await this.generator.generateMultiplayerShareImage(shareData);
-            
-            // 尝试分享策略：剪贴板 -> 下载
-            const success = await this._tryShare(blob);
-            return success;
-            
-        } catch (error) {
-            console.error('Share failed:', error);
-            this._showMessage('分享失败，请稍后重试', 'error');
+            // 剪贴板优先
+            const copied = await this._tryClipboard(blob);
+            if (copied){ this._showMessage('已复制到剪贴板，快去粘贴吧！','success'); return true; }
+            // 降级：原生分享
+            const native = await this._tryNativeShare(blob);
+            if (native){ this._showMessage('已调用系统分享','success'); return true; }
+            // 再降级：下载
+            await this._download(blob);
+            this._showMessage('已保存图片（剪贴板不可用）','info');
+            return true;
+        } catch (e){
+            console.error(e);
+            this._showMessage('分享失败，请尝试截图','error');
             return false;
-            
         } finally {
-            this.isSharing = false;
-            this.updateUI(this.getAppState ? this.getAppState() : {multiplayer: {players: [], isAssigning: false}});
+            this.isSharing = false; this.updateUI(this.getAppState());
         }
     }
 
     /**
-     * 尝试各种分享方式 - 增加移动端原生分享支持
+     * 尝试剪贴板分享
      * @param {Blob} blob - 图片Blob
      * @returns {Promise<boolean>} 是否成功
      * @private
      */
-    async _tryShare(blob) {
-        // 策略1: 移动端原生分享API (iOS/Android)
-        if (this._isNativeShareSupported()) {
-            try {
-                await this._shareWithNativeAPI(blob);
-                this._showMessage('已调用原生分享！', 'success');
-                return true;
-            } catch (error) {
-                console.warn('Native share failed, trying other methods:', error);
-            }
-        }
-
-        // 策略2: 剪贴板API (桌面端)
-        if (this._isClipboardSupported()) {
-            try {
-                await this._shareToClipboard(blob);
-                this._showMessage('结果已复制到剪贴板！', 'success');
-                return true;
-            } catch (error) {
-                console.warn('Clipboard share failed, falling back to download:', error);
-            }
-        }
-
-        // 策略3: 降级到下载
+    async _tryClipboard(blob){
         try {
-            await this._downloadImage(blob);
-            this._showMessage('图片已保存，可手动分享！', 'success');
+            if (!navigator.clipboard || typeof ClipboardItem === 'undefined' || !window.isSecureContext) return false;
+            const item = new ClipboardItem({ [blob.type]: blob });
+            await navigator.clipboard.write([item]);
             return true;
-        } catch (error) {
-            console.error('Download failed:', error);
-            this._showMessage('保存失败，请手动截屏分享', 'error');
+        } catch { return false; }
+    }
+
+    /**
+     * 尝试原生分享
+     * @param {Blob} blob - 图片Blob
+     * @returns {Promise<boolean>} 是否成功
+     * @private
+     */
+    async _tryNativeShare(blob){
+        try {
+            if (!navigator.share) return false;
+            const file = new File([blob], `猎人小队-${Date.now()}.png`, { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })){
+                await navigator.share({ files:[file], title:'猎人小队武器分配', text:'我们的猎人武器配置' });
+                return true;
+            }
             return false;
-        }
-    }
-
-    /**
-     * 检查移动端原生分享API支持
-     * @returns {boolean}
-     * @private
-     */
-    _isNativeShareSupported() {
-        return (
-            navigator.share && 
-            navigator.canShare &&
-            this._isMobileDevice()
-        );
-    }
-
-    /**
-     * 检测是否为移动设备
-     * @returns {boolean}
-     * @private
-     */
-    _isMobileDevice() {
-        return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-               (navigator.maxTouchPoints && navigator.maxTouchPoints > 1 && /MacIntel/.test(navigator.platform));
-    }
-
-    /**
-     * 使用原生分享API分享图片 - iOS/Android原生支持
-     * @param {Blob} blob - 图片Blob
-     * @private
-     */
-    async _shareWithNativeAPI(blob) {
-        // 创建File对象，原生分享API需要File而不是Blob
-        const file = new File([blob], `猎人小队-${Date.now()}.png`, {
-            type: 'image/png'
-        });
-
-        // 检查是否支持分享文件
-        const shareData = {
-            title: 'Monster Hunter 武器分配结果',
-            text: '来看看我们的猎人小队武器分配！',
-            files: [file]
-        };
-
-        if (navigator.canShare(shareData)) {
-            await navigator.share(shareData);
-        } else {
-            // 如果不支持文件分享，则只分享文本和URL
-            await navigator.share({
-                title: 'Monster Hunter 武器分配结果',
-                text: '来看看我们的猎人小队武器分配！快来试试这个武器转盘吧！',
-                url: window.location.href
-            });
-            
-            // 同时下载图片供用户手动分享
-            await this._downloadImage(blob);
-        }
-    }
-
-    /**
-     * 检查剪贴板API支持
-     * @returns {boolean}
-     * @private
-     */
-    _isClipboardSupported() {
-        return (
-            navigator.clipboard &&
-            window.isSecureContext &&
-            typeof ClipboardItem !== 'undefined'
-        );
-    }
-
-    /**
-     * 复制到剪贴板
-     * @param {Blob} blob - 图片Blob
-     * @private
-     */
-    async _shareToClipboard(blob) {
-        const clipboardItem = new ClipboardItem({
-            [blob.type]: blob
-        });
-        await navigator.clipboard.write([clipboardItem]);
+        } catch { return false; }
     }
 
     /**
@@ -799,19 +514,12 @@ export class ShareController {
      * @param {Blob} blob - 图片Blob
      * @private
      */
-    async _downloadImage(blob) {
+    async _download(blob){
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `猎人小队-${new Date().toISOString().split('T')[0]}.png`;
-        
-        // 兼容性处理
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // 清理URL对象
-        setTimeout(() => URL.revokeObjectURL(url), 100);
+        const a = document.createElement('a');
+        a.href = url; a.download = `猎人小队-${new Date().toISOString().split('T')[0]}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(()=>URL.revokeObjectURL(url),200);
     }
 
     /**
@@ -820,81 +528,22 @@ export class ShareController {
      * @param {string} type - 消息类型 ('success' | 'error' | 'info')
      * @private
      */
-    _showMessage(message, type = 'info') {
-        // 创建符合项目zinc色系的提示元素
+    _showMessage(message,type='info'){
         const toast = document.createElement('div');
-        toast.className = `share-toast share-toast-${type}`;
         toast.textContent = message;
-        
-        // 使用项目统一的zinc色系设计
+        const color = type==='success'? '#16a34a': type==='error'? '#dc2626': '#475569';
         Object.assign(toast.style, {
-            position: 'fixed',
-            top: '24px',
-            left: '50%',
-            transform: 'translateX(-50%) translateY(-10px) scale(0.95)',
-            padding: '12px 20px',
-            borderRadius: '8px', // 稍小的圆角，更精致
-            color: 'white',
-            fontWeight: '500',
-            fontFamily: '"Noto Sans SC", sans-serif',
-            fontSize: '14px',
-            zIndex: '10000',
-            backgroundColor: type === 'success' 
-                ? '#22c55e'  // green-500
-                : type === 'error' 
-                ? '#ef4444'  // red-500
-                : '#71717a', // zinc-500 - 更协调的默认色
-            boxShadow: type === 'success' 
-                ? '0 4px 20px rgba(34, 197, 94, 0.2)' 
-                : type === 'error' 
-                ? '0 4px 20px rgba(239, 68, 68, 0.2)'
-                : '0 4px 20px rgba(113, 113, 122, 0.2)', // zinc阴影
-            border: 'none',
-            backdropFilter: 'blur(8px)',
-            transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-            opacity: '0'
+            position:'fixed', top:'24px', left:'50%', transform:'translateX(-50%) translateY(-8px)',
+            background: color, color:'#fff', padding:'10px 18px', borderRadius:'10px', fontSize:'14px', fontWeight:'500',
+            fontFamily:'"Noto Sans SC", sans-serif', zIndex:9999, opacity:'0', transition:'all .35s cubic-bezier(.4,.8,.2,1)'
         });
-        
         document.body.appendChild(toast);
-        
-        // 入场动画 - 更有生命力的动画
-        requestAnimationFrame(() => {
-            toast.style.opacity = '1';
-            toast.style.transform = 'translateX(-50%) translateY(0) scale(1)';
-        });
-        
-        // 3.5秒后优雅退出
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(-50%) translateY(-10px) scale(0.95)';
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        document.body.removeChild(toast);
-                    }
-                }, 300);
-            }
-        }, 3500); // 稍微延长显示时间，让用户有足够时间阅读
-    }
-
-    /**
-     * 获取分享状态
-     * @returns {boolean} 是否正在分享
-     */
-    getShareStatus() {
-        return this.isSharing;
+        requestAnimationFrame(()=>{ toast.style.opacity='1'; toast.style.transform='translateX(-50%) translateY(0)'; });
+        setTimeout(()=>{ toast.style.opacity='0'; toast.style.transform='translateX(-50%) translateY(-8px)'; setTimeout(()=>toast.remove(),350); },3400);
     }
 
     /**
      * 销毁分享控制器
      */
-    destroy() {
-        if (this.shareButton) {
-            // 创建一个绑定的方法引用来正确移除事件监听器
-            this.shareButton.removeEventListener('click', this._boundHandleShare);
-        }
-        this.initialized = false;
-        this.shareButton = null;
-        this.getAppState = null;
-    }
+    destroy(){ if (this.shareButton) this.shareButton.removeEventListener('click', this._boundHandleShare); }
 }
