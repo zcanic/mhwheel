@@ -12,8 +12,8 @@ export const appState = {
     teamChallenge: null,
     allowDuplicateWeapons: true,
     players: [
-      { id: 1, name: '玩家1', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true },
-      { id: 2, name: '玩家2', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true }
+      { id: 'player-1', name: '玩家1', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true },
+      { id: 'player-2', name: '玩家2', weapon: null, challenge: null, rerollsLeft: 1, isRevealed: true }
     ]
   }
 };

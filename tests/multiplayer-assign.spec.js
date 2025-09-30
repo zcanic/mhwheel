@@ -15,8 +15,9 @@ test.describe('Multiplayer Assign', () => {
     const dupToggle = page.locator('#allowDuplicateWeapons');
     if (await dupToggle.isChecked()) await dupToggle.uncheck();
     await page.locator('#generateMultiButton').click();
-    // Wait for assignment end
-    await page.waitForTimeout(600);
+    await page.waitForFunction(() => window.shareController && typeof window.shareController.getState === 'function');
+    await page.waitForFunction(() => window.shareController.getState().multiplayer.isAssigning === true);
+    await page.waitForFunction(() => window.shareController.getState().multiplayer.isAssigning === false);
     const weaponNames = await page.locator('.player-card .weapon-name').allInnerTexts();
     expect(weaponNames.length).toBeGreaterThan(0);
     const unique = new Set(weaponNames);

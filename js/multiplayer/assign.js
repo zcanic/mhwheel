@@ -6,6 +6,15 @@ import { getMetalSynth } from '../sound.js';
 
 const metal = getMetalSynth();
 
+function getRevealDelay(){
+  if (typeof window !== 'undefined'){
+    const custom = Number(window.__ASSIGN_DELAY__);
+    if (!Number.isNaN(custom) && custom >= 0) return custom;
+    if (window.__TEST_FAST__) return 100;
+  }
+  return 500;
+}
+
 export async function startAssignment(){
   const players = getPlayers();
   const active = weapons.filter(w=>getActiveWeapons().includes(w.name));
@@ -23,8 +32,9 @@ export async function startAssignment(){
     let pool = [...active];
     results = players.map(p=>{ const idx=Math.random()*pool.length|0; const w=pool[idx]; pool.splice(idx,1); return { id:p.id, weapon:w, challenge: randChallenge() }; });
   }
+  const revealDelay = getRevealDelay();
   for (let r of results){
-    await wait(500);
+    await wait(revealDelay);
     try { metal.triggerAttackRelease('C5','8n'); } catch {}
     updatePlayer(r.id,{ weapon:r.weapon, challenge:r.challenge, isRevealed:true });
   }

@@ -1,0 +1,5 @@
+行为在每日行动process.md留痕
+python运行使用mcp
+行动更改记得参考和更改file_path.md
+调用较新的库时，要是有和认知有明显出入，使用context7 mcp
+保持文件结构，追求洁净、便于后期研究

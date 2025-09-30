@@ -1,4 +1,5 @@
 // sw.js - 简易预缓存 + 运行时缓存 (静态资源 + 图标)
+// 发布新版本或更新静态资源时，务必同步修改 VERSION 以触发旧缓存清理
 const VERSION = 'v2.3.0';
 const PRECACHE = `precache-${VERSION}`;
 const RUNTIME = `runtime-${VERSION}`;
@@ -15,7 +16,10 @@ const CORE_ASSETS = [
   './js/share/imageGenerator.js',
   './js/data.js',
   './js/utils.js',
-  './js/wheel.js'
+  './js/wheel.js',
+  './js/settings.js',
+  './js/sound.js',
+  './js/vendor/tone-lite.js'
 ];
 
 self.addEventListener('install', e => {

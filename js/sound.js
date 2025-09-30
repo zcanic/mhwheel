@@ -19,19 +19,28 @@ function loadToneModule() {
     }
     
     isToneLoading = true;
-    toneLoadPromise = import('https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js')
-        .then(module => {
+    toneLoadPromise = (async () => {
+        try {
+            const module = await import('https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js');
             toneModule = module;
-            isToneLoading = false;
             console.log('Tone.js loaded successfully');
             return module;
-        })
-        .catch(error => {
-            console.warn('Failed to load Tone.js, using dummy synths:', error);
-            toneModule = null;
+        } catch (error) {
+            console.warn('Failed to load Tone.js from CDN, attempting local fallback:', error);
+            try {
+                const fallback = await import('./vendor/tone-lite.js');
+                toneModule = fallback;
+                console.info('Loaded tone-lite fallback synth.');
+                return fallback;
+            } catch (fallbackError) {
+                console.warn('Failed to load local tone fallback, using dummy synths:', fallbackError);
+                toneModule = null;
+                return null;
+            }
+        } finally {
             isToneLoading = false;
-            return null;
-        });
+        }
+    })();
     
     return toneLoadPromise;
 }

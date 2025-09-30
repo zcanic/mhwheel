@@ -130,8 +130,11 @@ export class SettingsManager {
         }
         
         // 合并新设置
+        const base = (this.settings && typeof this.settings === 'object')
+            ? this.settings
+            : { ...SETTINGS_CONFIG.DEFAULTS };
         this.settings = {
-            ...this.settings,
+            ...base,
             ...updates
         };
         

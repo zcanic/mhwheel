@@ -2,7 +2,7 @@
 // 职责：封装旋转动画、结果判定，与 Canvas 绘制模块解耦。
 import { challenges } from '../data.js';
 import { updateSpin, appState, resetSpin } from '../state/appState.js';
-import { drawWheel } from '../wheel.js';
+import { drawWheel, setRotation } from '../wheel.js';
 import { getSynth, getMetalSynth } from '../sound.js';
 import { weapons } from '../data.js';
 
@@ -26,6 +26,7 @@ export function startSpin(ctx, canvas, activeWeaponNames){
   updateSpin({ isSpinning: true });
   spinRuntime.rotation %= (Math.PI*2);
   spinRuntime.speed = isTestFast()? 0.05 : (Math.random()*0.2 + 0.3);
+  setRotation(spinRuntime.rotation);
   try { synth.triggerAttackRelease('C2','8n'); } catch {}
   animate(active, ctx, canvas);
 }
@@ -37,6 +38,10 @@ function animate(active, ctx, canvas){
   }
   spinRuntime.rotation += spinRuntime.speed;
   spinRuntime.speed *= isTestFast()? 0.6 : DECAY;
+  setRotation(spinRuntime.rotation);
+  if (typeof window !== 'undefined' && window.__TEST_CAPTURE_SPIN__){
+    window.__TEST_SPIN_ANGLE__ = spinRuntime.rotation;
+  }
   const step = (Math.PI*2)/active.length;
   const angleIndex = Math.floor(spinRuntime.rotation * (active.length / (Math.PI*2)));
   if (angleIndex !== lastAngleIndex){
@@ -51,6 +56,7 @@ function finish(active){
   updateSpin({ isSpinning:false });
   try { synth.triggerAttackRelease('G4','0.5s'); } catch {}
   const finalAngle = spinRuntime.rotation % (Math.PI*2);
+  setRotation(finalAngle);
   const step = (Math.PI*2)/active.length;
   const corrected = (1.5*Math.PI - finalAngle + 2*Math.PI) % (2*Math.PI);
   const idx = Math.floor(corrected / step);

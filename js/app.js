@@ -15,16 +15,42 @@ const settingsManager = getSettingsManager();
 const dom = {}; // 延迟填充
 let shareController = null;
 
+function persistActiveWeapons(names, { persist = true } = {}){
+  const normalized = Array.isArray(names) ? [...new Set(names)] : [];
+  setActiveWeapons(normalized);
+  if (persist){
+    try { settingsManager.updateSettings({ activeWeaponNames: normalized }); }
+    catch(e){ console.warn('Persist active weapons failed', e); }
+  }
+}
+
+function persistMode(mode, { persist = true } = {}){
+  setMode(mode);
+  if (persist){
+    try { settingsManager.updateSettings({ lastMode: mode }); }
+    catch(e){ console.warn('Persist mode failed', e); }
+  }
+}
+
+function generatePlayerId(){
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'){
+      return crypto.randomUUID();
+    }
+  } catch {/* noop */}
+  return `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function initStateDefaults(){
   // 若首次加载未设置，激活全部武器
-  if (!appState.activeWeaponNames.length) setActiveWeapons(weapons.map(w=>w.name));
+  if (!appState.activeWeaponNames.length) persistActiveWeapons(weapons.map(w=>w.name), { persist: false });
 }
 
 function bindEvents(){
   dom.modeButtons.forEach(btn=>{
     btn.setAttribute('aria-pressed', btn.classList.contains('active') ? 'true' : 'false');
     btn.addEventListener('click', ()=>{
-      setMode(btn.dataset.mode);
+      persistMode(btn.dataset.mode);
       // 更新 pressed 状态
       dom.modeButtons.forEach(b=> b.setAttribute('aria-pressed', b.dataset.mode === appState.mode ? 'true':'false'));
     });
@@ -34,24 +60,30 @@ function bindEvents(){
     const ctx = dom.canvas.getContext('2d');
     startSpin(ctx, dom.canvas, appState.activeWeaponNames);
   });
-  if (dom.selectAllBtn) dom.selectAllBtn.addEventListener('click', ()=> setActiveWeapons(weapons.map(w=>w.name)));
-  if (dom.deselectAllBtn) dom.deselectAllBtn.addEventListener('click', ()=> setActiveWeapons([]));
+  if (dom.selectAllBtn) dom.selectAllBtn.addEventListener('click', ()=> persistActiveWeapons(weapons.map(w=>w.name)));
+  if (dom.deselectAllBtn) dom.deselectAllBtn.addEventListener('click', ()=> persistActiveWeapons([]));
   // 多人
-  if (dom.addPlayerBtn) dom.addPlayerBtn.addEventListener('click', ()=> addPlayer({ id: Date.now(), name:`玩家${appState.multiplayer.players.length+1}`, weapon:null, challenge:null, rerollsLeft:1, isRevealed:true }));
+  if (dom.addPlayerBtn) dom.addPlayerBtn.addEventListener('click', ()=>{
+    if (appState.multiplayer.isAssigning) return;
+    if (appState.multiplayer.players.length >= 4) return;
+    const id = generatePlayerId();
+    addPlayer({ id, name:`玩家${appState.multiplayer.players.length+1}`, weapon:null, challenge:null, rerollsLeft:1, isRevealed:true });
+    dom.addPlayerBtn.disabled = true;
+  });
   if (dom.generateMultiButton) dom.generateMultiButton.addEventListener('click', ()=> startAssignment());
-  if (dom.multiSelectAll) dom.multiSelectAll.addEventListener('click', ()=> setActiveWeapons(weapons.map(w=>w.name)));
-  if (dom.multiDeselectAll) dom.multiDeselectAll.addEventListener('click', ()=> setActiveWeapons([]));
+  if (dom.multiSelectAll) dom.multiSelectAll.addEventListener('click', ()=> persistActiveWeapons(weapons.map(w=>w.name)));
+  if (dom.multiDeselectAll) dom.multiDeselectAll.addEventListener('click', ()=> persistActiveWeapons([]));
   if (dom.allowDuplicateToggle) dom.allowDuplicateToggle.addEventListener('change', e=> setAllowDuplicate(e.target.checked));
   // 玩家卡片事件代理
   if (dom.multiPlayerCardContainer){
     dom.multiPlayerCardContainer.addEventListener('click', e=>{
       const t=e.target;
-      if (t.classList.contains('remove-player-btn')) removePlayer(parseInt(t.dataset.playerId,10));
-      if (t.classList.contains('reroll-btn')) reroll(parseInt(t.dataset.playerId,10));
+      if (t.classList.contains('remove-player-btn')) removePlayer(t.dataset.playerId);
+      if (t.classList.contains('reroll-btn')) reroll(t.dataset.playerId);
     });
     dom.multiPlayerCardContainer.addEventListener('input', e=>{
       if (e.target.classList.contains('player-name-input')){
-        const id=parseInt(e.target.closest('.player-card').dataset.playerId,10);
+        const id=e.target.closest('.player-card').dataset.playerId;
         updatePlayer(id,{ name:e.target.value });
       }
     });
@@ -61,15 +93,19 @@ function bindEvents(){
   const multiResetBtn=document.getElementById('multiResetSettings');
   [resetBtn,multiResetBtn].forEach(btn=> btn && btn.addEventListener('click', ()=>{
     if (!confirm('确定要重置所有设置吗？')) return;
-    try { settingsManager.resetSettings(); setMode('single'); setActiveWeapons(weapons.map(w=>w.name)); } catch(e){ console.warn('Reset failed', e); }
+    try {
+      settingsManager.resetSettings();
+      persistMode('single');
+      persistActiveWeapons(weapons.map(w=>w.name));
+    } catch(e){ console.warn('Reset failed', e); }
   }));
 }
 
 function initSettings(){
   try {
     const loaded = settingsManager.init((s)=>{
-      if (Array.isArray(s.activeWeaponNames)) setActiveWeapons(s.activeWeaponNames);
-      if (s.lastMode) setMode(s.lastMode);
+      if (Array.isArray(s.activeWeaponNames)) persistActiveWeapons(s.activeWeaponNames, { persist: false });
+      if (s.lastMode) persistMode(s.lastMode, { persist: false });
     });
     if (!loaded){ settingsManager.updateSettings({ activeWeaponNames: appState.activeWeaponNames, lastMode: appState.mode }); }
   } catch(e){ console.warn('Settings init failed', e); }
