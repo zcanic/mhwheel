@@ -14,6 +14,7 @@ import { getSynth, getMetalSynth } from './sound.js';
 const settingsManager = getSettingsManager();
 const dom = {}; // 延迟填充
 let shareController = null;
+const weaponButtonCache = new Map();
 
 function persistActiveWeapons(names, { persist = true } = {}){
   const normalized = Array.isArray(names) ? [...new Set(names)] : [];
@@ -39,6 +40,60 @@ function generatePlayerId(){
     }
   } catch {/* noop */}
   return `player-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function handleWeaponToggle(name){
+  const active = new Set(appState.activeWeaponNames);
+  if (active.has(name)) active.delete(name); else active.add(name);
+  persistActiveWeapons([...active]);
+}
+
+function buildWeaponButton(weapon){
+  const button = document.createElement('button');
+  button.className = 'weapon-btn inactive p-2 rounded-lg border-2 font-semibold text-sm flex items-center justify-center';
+  button.dataset.weaponName = weapon.name;
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'weapon-icon-selector';
+  iconDiv.style.backgroundImage = `url('${weapon.icon}')`;
+  iconDiv.addEventListener('error', (e)=>{
+    console.warn(`Failed to load icon for ${weapon.name}`);
+    e.target.style.backgroundImage = 'none';
+    e.target.textContent = '⚠️';
+  }, { once:true });
+  button.appendChild(iconDiv);
+  const textSpan = document.createElement('span');
+  textSpan.textContent = weapon.name;
+  button.appendChild(textSpan);
+  button.addEventListener('click', ()=> handleWeaponToggle(weapon.name));
+  weaponButtonCache.set(button, weapon.name);
+  return button;
+}
+
+function initWeaponSelector(container){
+  if (!container) return;
+  container.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  weapons.forEach(weapon=> frag.appendChild(buildWeaponButton(weapon)));
+  container.appendChild(frag);
+}
+
+function initWeaponSelectors(){
+  initWeaponSelector(dom.weaponSelector);
+  initWeaponSelector(dom.multiWeaponSelector);
+  updateWeaponSelectors();
+}
+
+function updateWeaponSelectors(){
+  const active = new Set(appState.activeWeaponNames);
+  weaponButtonCache.forEach((name, button)=>{
+    if (!button.isConnected) return;
+    const isActive = active.has(name);
+    button.classList.toggle('active', isActive);
+    button.classList.toggle('inactive', !isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    const icon = button.querySelector('.weapon-icon-selector');
+    if (icon) icon.style.transform = isActive ? 'scale(1.1)' : 'scale(1)';
+  });
 }
 
 function initStateDefaults(){
@@ -117,15 +172,20 @@ function initShare(){
 
 function init(){
   Object.assign(dom, createDOMRefs());
+  initWeaponSelectors();
   initStateDefaults();
   bindEvents();
   initSettings();
   initShare();
   // 预加载武器图标
-  preloadWeaponIcons(weapons, null, ()=> render(dom));
+  preloadWeaponIcons(weapons, null, ()=>{ render(dom); updateWeaponSelectors(); });
   // 订阅渲染
-  subscribe(()=> render(dom));
+  subscribe(()=>{
+    render(dom);
+    updateWeaponSelectors();
+  });
   render(dom);
+  updateWeaponSelectors();
   // Service Worker 注册
   if ('serviceWorker' in navigator){
     navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW register failed', e));

@@ -78,6 +78,21 @@ function renderMulti(dom, active){
 }
 
 function renderPlayerCards(container){
+  let preserveFocus = null;
+  if (typeof document !== 'undefined'){
+    const activeEl = document.activeElement;
+    if (activeEl && container.contains(activeEl) && activeEl.classList.contains('player-name-input')){
+      const parentCard = activeEl.closest('.player-card');
+      if (parentCard?.dataset.playerId){
+        preserveFocus = {
+          playerId: parentCard.dataset.playerId,
+          selectionStart: typeof activeEl.selectionStart === 'number' ? activeEl.selectionStart : activeEl.value.length,
+          selectionEnd: typeof activeEl.selectionEnd === 'number' ? activeEl.selectionEnd : activeEl.value.length
+        };
+      }
+    }
+  }
+
   container.innerHTML='';
   const frag=document.createDocumentFragment();
   appState.multiplayer.players.forEach(p=>{
@@ -106,4 +121,17 @@ function renderPlayerCards(container){
     frag.appendChild(card);
   });
   container.appendChild(frag);
+
+  if (preserveFocus?.playerId){
+    const targetCard = container.querySelector(`.player-card[data-player-id="${preserveFocus.playerId}"]`);
+    const input = targetCard?.querySelector('.player-name-input');
+    if (input){
+      const start = Math.min(preserveFocus.selectionStart ?? input.value.length, input.value.length);
+      const end = Math.min(preserveFocus.selectionEnd ?? input.value.length, input.value.length);
+      input.focus();
+      if (typeof input.setSelectionRange === 'function'){
+        input.setSelectionRange(start, end);
+      }
+    }
+  }
 }

@@ -35,15 +35,22 @@ function getAngleStep(numWeapons) {
 // --- 静态层缓存（扇区 + 图标/文字不含高亮）---
 let staticLayer = null;
 let staticLayerWeaponsKey = '';
+let staticLayerMissingIcons = false;
 
 function buildStaticLayer(activeWeapons){
     const key = activeWeapons.map(w=>w.name).join('|');
-    if (key === staticLayerWeaponsKey && staticLayer) return;
+    const hasMissingIcons = activeWeapons.some(w=>!weaponIcons[w.name]);
+    if (key === staticLayerWeaponsKey && staticLayer && !(staticLayerMissingIcons && !hasMissingIcons)) return;
     const off = document.createElement('canvas');
     off.width = 500; off.height = 500; // 与主 canvas 相同
     const octx = off.getContext('2d');
     const numWeapons = activeWeapons.length;
-    if(!numWeapons){ staticLayer = off; staticLayerWeaponsKey = key; return; }
+    if(!numWeapons){
+        staticLayer = off;
+        staticLayerWeaponsKey = key;
+        staticLayerMissingIcons = false;
+        return;
+    }
     const angleStep = getAngleStep(numWeapons);
     octx.translate(CANVAS_CENTER, CANVAS_CENTER);
     // 扇区
@@ -73,7 +80,9 @@ function buildStaticLayer(activeWeapons){
         }
         octx.restore();
     });
-    staticLayer = off; staticLayerWeaponsKey = key;
+    staticLayer = off;
+    staticLayerWeaponsKey = key;
+    staticLayerMissingIcons = hasMissingIcons;
 }
 
 // --- 状态 Getters/Setters ---
