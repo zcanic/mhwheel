@@ -5,6 +5,8 @@ import { appState } from '../state/appState.js';
 import { weapons } from '../data.js';
 import { drawWheel } from '../wheel.js';
 
+const weaponMap = new Map(weapons.map(w => [w.name, w]));
+
 export function createDOMRefs(){
   return {
     canvas: document.getElementById('wheelCanvas'),
@@ -86,7 +88,15 @@ function renderPlayerCards(container){
   const removeBtn = canRemove? `<button class="remove-player-btn" data-player-id="${p.id}" title="移除玩家" aria-label="移除玩家 ${p.name}">×</button>`:'';
     let body;
     if (appState.multiplayer.isAssigning && !p.isRevealed){
-      body = `<div class='slot-machine-effect'><div class='slot-machine-reel'>${appState.activeWeaponNames.map(n=>`<div class='weapon-icon'></div>`).join('')}</div></div>`;
+      const reel = appState.activeWeaponNames.length ? appState.activeWeaponNames : weapons.map(w => w.name);
+      const reelHtml = reel.map(name => {
+        const weapon = weaponMap.get(name);
+        if (weapon?.icon){
+          return `<div class='weapon-icon' style="background-image:url('${weapon.icon}')"></div>`;
+        }
+        return `<div class='weapon-icon'>⚔️</div>`;
+      }).join('');
+      body = `<div class='slot-machine-effect'><div class='slot-machine-reel'>${reelHtml}</div></div>`;
     } else if (p.weapon){
       body = `<div class='weapon-icon' style='background-image:url(${p.weapon.icon})'></div><div class='weapon-name' style='color:${p.weapon.color}'>${p.weapon.name}</div>`;
     } else body = `<div class='text-zinc-400'>等待分配...</div>`;

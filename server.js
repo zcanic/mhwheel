@@ -15,9 +15,11 @@ function send(res, code, headers, body){ res.writeHead(code, headers); res.end(b
 const server = http.createServer((req,res)=>{
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   // 支持 base href /mhwheel/ 前缀访问
-  if (urlPath.startsWith('/mhwheel/')) urlPath = urlPath.replace('/mhwheel','');
+  if (urlPath === '/mhwheel') urlPath = '/';
+  else if (urlPath.startsWith('/mhwheel/')) urlPath = urlPath.slice('/mhwheel'.length);
   if (urlPath === '/' ) urlPath = '/index.html';
-  const filePath = join(ROOT, urlPath);
+  const relativePath = urlPath.replace(/^\/+/, '');
+  const filePath = join(ROOT, relativePath);
   if (!existsSync(filePath)) { send(res,404,{ 'content-type':'text/plain' }, 'Not found'); return; }
   const ext = extname(filePath);
   res.writeHead(200,{ 'content-type': MIME[ext] || 'application/octet-stream' });
